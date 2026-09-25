@@ -224,3 +224,33 @@ def test_unsupported_numbers_are_found():
 def test_stylistic_rewrite_is_not_a_typo(tmp_path):
     ans = {"q8": {"ok": False}, "typos": [{"wrong": "как звали маму", "right": "как звали свою мать"}]}
     assert not _audit(ans, "Они помнят, как звали маму", tmp_path=tmp_path)
+
+
+def test_token_template_kinds(tmp_path):
+    """Шаблон с метками {{cover.title}} и одинаковым именем макета «Титульный слайд» у всех слайдов."""
+    from tests.conftest import _text
+    from app.parsing.analyze import TemplateAnalyzer
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Inches(13.333), Inches(7.5)
+    for i, tok in enumerate(["cover", "cards_3x2", "section", "row_3"]):
+        s = prs.slides.add_slide(prs.slide_layouts[0])      # «Title Slide» у всех
+        for ph in list(s.placeholders):
+            ph._element.getparent().remove(ph._element)
+        _text(s, 0.8, 0.5, 10, 1.0, "{{" + tok + ".title}}", 60 if tok == "section" else 36, bold=True)
+        if tok.startswith(("cards", "row")):
+            for k in range(3):
+                _text(s, 0.8 + 4 * k, 2.5, 3.5, 0.5, "{{" + tok + f".item_{k}.label}}}}", 14)
+    p = tmp_path / "tokens.pptx"
+    prs.save(str(p))
+    kinds = [s.kind for s in TemplateAnalyzer(p).run()]
+    assert kinds == ["title", "content", "section", "content"]
+
+
+def test_template_logos_are_not_garbage_and_empty_brief_softens_facts(tmp_path):
+    from app.audit.contextual import audit_slides
+    png = tmp_path / "s.png"
+    Image.new("RGB", (64, 36), "white").save(png)
+    run = _FakeRun({"q7": {"ok": False, "comment": "Логотипы VK Workspace в углах"},
+                    "q4": {"ok": False, "comment": "Упоминание санкций не подтверждено"}})
+    issues, _ = asyncio.run(audit_slides([_layout("Тема")], [png], ["content"], "бриф", run, no_data=True))
+    assert [(i.check, i.severity) for i in issues] == [("facts_supported", "warning")]

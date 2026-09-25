@@ -36,6 +36,9 @@ CLOSING_WORDS = re.compile(r"(спасибо|благодар|thank|вопрос
 AGENDA_WORDS = re.compile(r"(содержани|agenda|план презентации|оглавлени|структура|contents)", re.I)
 SECTION_LAYOUT = re.compile(r"(раздел|section|divider|разделител|глав)", re.I)
 TITLE_LAYOUT = re.compile(r"(титул|title slide|обложк|cover)", re.I)
+TOKEN = re.compile(r"^\{\{\s*([A-Za-z]+)[\w.]*\s*\}\}$")
+TOKEN_KINDS = {"cover": "title", "title": "title", "agenda": "agenda", "contents": "agenda", "section": "section",
+               "divider": "section", "closing": "closing", "thanks": "closing", "final": "closing", "end": "closing"}
 CLOSING_LAYOUT = re.compile(r"(спасибо|thank|end|финал|конец)", re.I)
 AGENDA_LAYOUT = re.compile(r"(содержани|agenda|оглавл)", re.I)
 
@@ -90,6 +93,17 @@ class SlideAnalysis:
     band_bottom: int = 0
     features: dict = field(default_factory=dict)
     slots: list[Slot] = field(default_factory=list)
+
+
+def is_photo_placeholder(s: ShapeInfo, slide_area: float) -> bool:
+    """Серый круг/прямоугольник без текста — место под фото спикера или продукта, а не оформление."""
+    from .ooxml import luminance, saturation
+    if s.kind != "shape" or s.has_text or s.geom not in ("ellipse", "roundRect", "rect", "flowChartConnector"):
+        return False
+    f = s.fill
+    if not f or f in ("none", "picture") or str(f).startswith("grad:"):
+        return False
+    return saturation(f) < 0.15 and 0.12 < luminance(f) < 0.75 and 0.002 * slide_area <= s.area <= 0.12 * slide_area
 
 
 def _style_of(s: ShapeInfo) -> TextStyle:
@@ -168,6 +182,10 @@ class TemplateAnalyzer:
         # второй проход: вид слайда с учётом медианного кегля заголовков колоды
         tsz = [sa.features["title_size"] for sa in self.slides if not sa.service and sa.features.get("title_size")]
         self.median_title = statistics.median(tsz) if tsz else 24
+        # имя макета — подсказка, только если оно редкое: бывают шаблоны, где почти все макеты «N_Титульный слайд»
+        n = max(1, len(self.slides))
+        self.title_layouts_rare = sum(1 for sa in self.slides if TITLE_LAYOUT.search(sa.layout)) <= max(2, 0.3 * n)
+        self.section_layouts_rare = sum(1 for sa in self.slides if SECTION_LAYOUT.search(sa.layout)) <= max(3, 0.3 * n)
         for sa in self.slides:
             sa.kind = self._classify(sa)
             sa.slots = self._slots(sa)
@@ -513,6 +531,20 @@ class TemplateAnalyzer:
         lay = sa.layout
         title_text = sa.title.text if sa.title else ""
         all_text = " ".join(it.text for it in sa.items)
+        # шаблон с метками-заготовками ({{cover.title}}, {{section.title}}): префикс метки прямо называет вид слайда
+        tok = TOKEN.match(title_text.strip())
+        if tok:
+            kind = TOKEN_KINDS.get(tok.group(1).lower())
+            if kind == "title":
+                return "title"
+            if kind == "agenda":
+                return "agenda"
+            if kind in ("section", "closing") and not f["has_table"] and not f["has_chart"] and f["n_text"] <= 4:
+                return kind
+        if not getattr(self, "title_layouts_rare", True):
+            lay = TITLE_LAYOUT.sub("", lay)
+        if not getattr(self, "section_layouts_rare", True):
+            lay = SECTION_LAYOUT.sub("", lay)
         if sa.index == 1 or TITLE_LAYOUT.search(lay):
             if f["n_text"] <= 4 and not f["has_table"] and not f["has_chart"]:
                 return "title"

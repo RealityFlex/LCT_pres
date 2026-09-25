@@ -207,12 +207,19 @@ def build_patterns(an: TemplateAnalyzer, slides: list[SlideAnalysis], pngs: list
                 ma = sum(m["box"]["w"] * m["box"]["h"] for m in it["members"] if m["role"] in ("heading", "body", "number"))
                 fills.append(ma / max(1, cb_["w"] * cb_["h"]))
         info.hollow = bool(fills) and sum(fills) / len(fills) < 0.12
+        # места под фото внутри пунктов или рядом — паттерн годится только со своей картинкой
+        from .analyze import is_photo_placeholder
+        if any(is_photo_placeholder(it.top, W * H) for it in cont):
+            info.hollow = True
         # картинка с текстом годится, только если у неё есть свой текстовый блок и немного лишнего
         if info.kind == "image" and (info.lead_sid is None or len(info.remove_sids) > 12):
             continue
         if info.kind in ("cards", "rows", "stats") and len(info.remove_sids) > 14:
             continue
         boxes = [it["box"] for it in info.items]
+        if lead is not None:
+            # вводный абзац под заголовком — часть контента: заголовок не должен на него разрастаться
+            boxes.append({"x": lead.top.x, "y": lead.top.y, "w": lead.top.w, "h": lead.top.h})
         if info.chart_box:
             boxes.append(info.chart_box.model_dump())
         if boxes:

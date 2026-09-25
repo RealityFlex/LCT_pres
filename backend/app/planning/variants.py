@@ -57,7 +57,15 @@ class CanvasPicker:
         cands = [c for c in self.p.canvases if c.kind == kind]
         if not cands:
             return None
-        # предпочитаем холсты с подзаголовком/телом — в них больше слотов для текста
+        # титул — обложка шаблона: первый по порядку слайд этого вида (дизайнеры ставят обложку первой);
+        # для остальных видов — холсты с подзаголовком/телом, в них больше слотов для текста
+        if kind == "title":
+            return min(cands, key=lambda c: c.source_slide)
+        if kind == "section":
+            # разделитель — слайд с самым крупным заголовком (а не «раздел» с диаграммой или карточкой)
+            def tsize(c):
+                return max((sl.style.size for sl in c.slots if sl.role == "title"), default=0)
+            return max(cands, key=lambda c: (tsize(c), -c.source_slide))
         return sorted(cands, key=lambda c: (-len([s for s in c.slots if s.role in ("subtitle", "body")]), -c.score))[0]
 
     def alternatives(self, c: Canvas) -> list[str]:

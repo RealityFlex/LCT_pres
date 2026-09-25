@@ -1,6 +1,7 @@
 """Холсты: слайды шаблона без контента + пиксельный анализ свободной области и фона."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -86,6 +87,9 @@ def _title_max_w(an: TemplateAnalyzer, sa: SlideAnalysis, lay_cache: dict, gap: 
     return lim
 
 
+TOKEN_TEXT = re.compile(r"\{\{[^{}]+\}\}")
+
+
 def draft_canvases(an: TemplateAnalyzer, slides: list[SlideAnalysis], grid: Box, gap: int) -> list[Canvas]:
     W, H = an.W, an.H
     res: list[Canvas] = []
@@ -103,6 +107,12 @@ def draft_canvases(an: TemplateAnalyzer, slides: list[SlideAnalysis], grid: Box,
                     and it.top.area < 0.06 * W * H]
             if len(pics) >= 3:
                 drop |= {it.sid for it in pics}
+            # метки-заготовки {{...}} вне слотов — служебный текст шаблона, в колоду он не должен попасть
+            slot_sids = {sl.sid for sl in sa.slots}
+            drop |= {it.sid for it in sa.items if it.has_text and it.sid not in slot_sids and TOKEN_TEXT.search(it.text)}
+            # пустые места под фото (серые круги у подписи спикера): без фотографии они выглядят как дыра
+            from .analyze import is_photo_placeholder
+            drop |= {it.sid for it in sa.items if it.sid in sa.content and is_photo_placeholder(it.top, W * H)}
             keep = [it.sid for it in sa.items if it.sid not in drop]
         else:
             if sa.title is None:

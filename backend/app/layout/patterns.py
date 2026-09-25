@@ -87,6 +87,31 @@ class PatternFiller:
         self.p = profile
         self.c = composer
 
+    def _bg_at(self, pat: Canvas, box: dict) -> Optional[str]:
+        """Цвет фона под рамкой по рендеру образца: текст бывает на своей плашке, а не на заливке карточки."""
+        cache = getattr(self, "_png_cache", None)
+        if cache is None:
+            cache = self._png_cache = {}
+        if pat.preview not in cache:
+            try:
+                import numpy as np
+                from PIL import Image
+                cache[pat.preview] = np.asarray(Image.open(pat.preview).convert("RGB")) if pat.preview else None
+            except Exception:
+                cache[pat.preview] = None
+        arr = cache[pat.preview]
+        if arr is None:
+            return None
+        import numpy as np
+        from ..parsing.ooxml import rgb_to_hex
+        ih, iw = arr.shape[:2]
+        sx, sy = iw / self.p.slide_w, ih / self.p.slide_h
+        x0, y0 = max(0, int(box["x"] * sx)), max(0, int(box["y"] * sy))
+        x1, y1 = min(iw, int((box["x"] + box["w"]) * sx)), min(ih, int((box["y"] + box["h"]) * sy))
+        if x1 - x0 < 2 or y1 - y0 < 2:
+            return None
+        return rgb_to_hex(np.median(arr[y0:y1, x0:x1].reshape(-1, 3), axis=0))
+
     def _font(self, family: str, look: Look) -> Optional[str]:
         return None if (not family or _fonts.font_available(family)) else look.body_font
 
@@ -111,6 +136,8 @@ class PatternFiller:
         color = None
         col = st.get("color")
         surf = bg or look.bg
+        if getattr(self, "_cur_pat", None) is not None:
+            surf = self._bg_at(self._cur_pat, b) or surf
         if col:
             from ..parsing.ooxml import contrast
             from .style import readable
@@ -124,6 +151,7 @@ class PatternFiller:
     def fill(self, spec: SlideSpec, pat: Canvas, lay: SlideLayout, look: Look) -> None:
         pi = pat.pattern
         s = spec.slide
+        self._cur_pat = pat
         lay.clone_full = True
         lay.recipe = f"pattern:{pi.kind}"
         for sid in pi.remove_sids:

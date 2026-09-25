@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 import traceback
 import uuid
@@ -250,6 +251,12 @@ def build_and_render(profile: TemplateProfile, layouts: list[SlideLayout], vdir:
     return {"pptx": pptx, "pdf": pdf, "pngs": pngs}
 
 
+def brief_no_data(source: str) -> bool:
+    """В брифе нет своих данных (поле «Данные» пустое или почти пустое)."""
+    m = re.search(r"Данные:(.*?)(?:\nФакты:|$)", source, re.S)
+    return len((m.group(1) if m else "").strip()) < 20
+
+
 def short_titles(profile) -> bool:
     """Нарратив шаблона — короткие заголовки-темы (2–3 слова), а не заголовки-выводы."""
     n = profile.narrative
@@ -283,7 +290,7 @@ async def audit_variant(profile: TemplateProfile, layouts: list[SlideLayout], fi
     tasks = [det_task]
     if contextual:
         tasks.append(audit_slides(layouts, files["pngs"], slide_kinds(profile, layouts), source, run,
-                                  title_capacity(profile), deadline, short_titles(profile)))
+                                  title_capacity(profile), deadline, short_titles(profile), brief_no_data(source)))
         tasks.append(audit_deck(layouts, run))
     res = await asyncio.gather(*tasks, return_exceptions=True)
     issues: list[Issue] = []
@@ -479,7 +486,7 @@ async def fix_variant(job: JobState, vid: str, issue_ids: list[str]) -> dict:
         sub_p = [files["pngs"][n - 1] for n in idx if n - 1 < len(files["pngs"])]
         kinds = slide_kinds(profile, sub_l)
         ctx, _ = await audit_slides(sub_l, sub_p, kinds, src, run, title_capacity(profile),
-                                    short_titles=short_titles(profile))
+                                    short_titles=short_titles(profile), no_data=brief_no_data(src))
         for iss in ctx:  # перенумеровать на реальные номера
             iss.slide = idx[iss.slide - 1]
             iss.id = f"{iss.check}-{iss.slide}-r{vs.revision}"

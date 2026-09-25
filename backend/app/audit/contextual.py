@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -31,6 +32,9 @@ FIX_FOR = {
     "q1": "rewrite_title", "q4": "remove_unsupported", "q8": "fix_typos", "q7": "remove_garbage",
     "q2": "rewrite_title", "q5": "recompose",
 }
+
+
+CHROME_WORDS = re.compile(r"(логотип|лого|logo|колонтитул|водян|брендинг|фирменн|декор)", re.I)
 
 
 def _is_typo(wrong: str, right: str) -> bool:
@@ -70,7 +74,7 @@ def _small_png(path: Path, width: int = 1024) -> bytes:
 
 async def audit_slides(layouts: list[SlideLayout], pngs: list[Path], kinds: list[str], source: str,
                        run: SkillRun, title_max: int = 70, deadline: Optional[float] = None,
-                       short_titles: bool = False) -> tuple[list[Issue], dict]:
+                       short_titles: bool = False, no_data: bool = False) -> tuple[list[Issue], dict]:
     """short_titles — шаблон сам использует короткие заголовки-темы: «нет вывода» тогда лишь подсказка."""
     import time
     issues: list[Issue] = []
@@ -107,6 +111,15 @@ async def audit_slides(layouts: list[SlideLayout], pngs: list[Path], kinds: list
                 res["typos"] = pairs
             if q == "q1" and short_titles:
                 sev = "info"
+            comment = str(a.get("comment") or "")
+            if q == "q7" and CHROME_WORDS.search(comment) and not re.search(r"\{\{|lorem|todo|xxx", comment, re.I):
+                continue      # логотипы, колонтитулы и декор — оформление шаблона, а не мусор
+            if q == "q4" and no_data:
+                # в брифе нет данных: общие утверждения неизбежны; ошибка — только числа на слайде, которых нет в брифе
+                from ..planning.facts import numbers
+                src = set(numbers(source))
+                if not [v for v in numbers(slide_text(lay)) if v not in src]:
+                    sev = "warning"
             fix = None
             act = FIX_FOR.get(q)
             if act == "rewrite_title" and res.get("better_title"):
