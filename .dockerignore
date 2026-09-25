@@ -1,0 +1,11 @@
+.git
+.env
+data
+**/node_modules
+frontend/dist
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.playwright-mcp
+.idea
+.vscode

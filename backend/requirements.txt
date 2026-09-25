@@ -1,0 +1,28 @@
+# Лекало — бэкенд. Python 3.12. Версии — те, на которых проверен пайплайн.
+# Внешние программы: LibreOffice (soffice) — рендер PPTX→PDF.
+
+# API
+fastapi==0.115.0
+uvicorn==0.52.4
+python-multipart==0.0.32
+pydantic==2.13.5
+
+# PPTX / OOXML
+python-pptx==1.0.2
+lxml==6.1.3
+
+# Рендер, пиксельный анализ, шрифты
+pymupdf==1.28.2
+pillow==12.3.0
+numpy==2.5.2
+scipy==1.17.1
+fonttools==4.62.0
+brotli==1.2.0          # woff2 из Google Fonts
+
+# Модели
+openai==2.30.0          # OpenAI-совместимый клиент (Yandex Cloud AI Studio: Qwen3.6-35B-A3B, gpt-oss-20b)
+httpx==0.28.1           # GigaChat / Kandinsky, загрузка шрифтов
+PyYAML==6.0.2           # config.yaml, скиллы
+
+# Тесты
+pytest==9.1.1

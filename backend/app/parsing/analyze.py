@@ -318,7 +318,8 @@ class TemplateAnalyzer:
             return None
         cands.sort(key=lambda c: (c[0], c[1]), reverse=True)
         best = cands[0][2]
-        sizes = [p.style.size or 12 for s in sa.shapes if s.has_text for p in s.paras]
+        # медиана по остальным текстам: единственный крупный текст (разделитель) не сравниваем сам с собой
+        sizes = [p.style.size or 12 for s in sa.shapes if s.has_text and s.sid != best.top.sid for p in s.paras]
         med = statistics.median(sizes) if sizes else 12
         if best.max_size < max(14, med * 1.1) and best.top.y > 0.25 * H:
             return None

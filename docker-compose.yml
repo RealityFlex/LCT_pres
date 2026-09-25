@@ -1,0 +1,10 @@
+services:
+  lekalo:
+    build: .
+    image: lekalo:latest
+    ports:
+      - "8000:8000"
+    env_file: .env            # LLM_API_KEY, LLM_FOLDER_ID, GIGACHAT_AUTH_KEY — см. .env.example
+    volumes:
+      - ./data:/app/data      # профили шаблонов, проекты, кэш картинок и шрифтов переживают перезапуск
+    restart: unless-stopped

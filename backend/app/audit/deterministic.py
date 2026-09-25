@@ -289,7 +289,7 @@ class DeterministicAuditor:
                     continue
                 if abs(o.x - s.x) > tol or abs(o.y - s.y) > tol or (abs(o.w - s.w) > tol and s.kind == "picture"):
                     _issue(issues, "chrome_moved", "Логотип или колонтитул сдвинут", "template", i,
-                           f"Элемент шаблона «{s.name}» смещён относительно макета", "error", s, s.sid, {"action": "restore_chrome"})
+                           f"Элемент шаблона «{s.name}» смещён относительно макета", "error", s, s.sid, {"action": "recompose"})
             if img is not None:
                 ih, iw = img.shape[:2]
                 sx, sy = iw / W, ih / H
