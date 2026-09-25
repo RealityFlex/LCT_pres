@@ -66,6 +66,7 @@ class ShapeInfo:
     table: Optional[dict] = None
     chart: Optional[dict] = None
     children: int = 0
+    text_slot: bool = False       # есть txBody — сюда можно писать текст (в т.ч. пустой плейсхолдер)
     in_layout: bool = False
 
     @property
@@ -361,6 +362,8 @@ class SlideExtractor:
                 if first(el, "p:txBody/a:p/a:r") is None:
                     info.kind = "line" if info.kind != "picture" else info.kind
             txb = first(el, "p:txBody")
+            if txb is not None and tag == "sp":
+                info.text_slot = True
             if txb is not None:
                 text, paras = _text_of(txb)
                 info.text = text

@@ -71,6 +71,48 @@ class CanvasPicker:
         return pool[0]
 
 
+RECIPE_INTENT = {"cards": "cards", "stats": "stats", "rows": "bullets", "table": "table", "process": "process",
+                 "timeline": "timeline", "chart": "chart", "comparison": "comparison", "image_text": "image",
+                 "bullets": "bullets", "agenda": "agenda"}
+
+
+class PatternPicker:
+    """Выбор слайда-паттерна шаблона: разнообразие (штраф за повтор) + предпочтения стратегии."""
+
+    def __init__(self, profile: TemplateProfile):
+        from collections import Counter
+        self.pats = list(profile.patterns)
+        self.used: Counter = Counter()
+        self.last: Optional[str] = None
+
+    def pick(self, s: ContentSlide, intent: str, strategy: str) -> Optional[Canvas]:
+        from ..layout.patterns import eligible
+        best = None
+        for p in self.pats:
+            sc = eligible(p, s, intent)
+            if sc is None:
+                continue
+            kind = p.pattern.kind
+            sc -= 1.2 * self.used[p.id]
+            if p.id == self.last:
+                sc -= 3
+            if strategy == "visual":
+                sc += 1.2 if (kind in ("stats", "image", "chart") or p.pattern.image_sids) else -0.8
+            elif strategy == "dense":
+                sc += 1.2 if kind in ("table", "rows") else -0.8
+            if best is None or sc > best[0]:
+                best = (sc, p)
+        if best is None:
+            return None
+        sc, p = best
+        threshold = {"faithful": -1.5, "visual": 0.8, "dense": 0.8}.get(strategy, 0)
+        if sc < threshold:
+            return None
+        self.used[p.id] += 1
+        self.last = p.id
+        return p
+
+
 def _short(text: str, words: int) -> str:
     w = text.split()
     return text if len(w) <= words else " ".join(w[:words]).rstrip(",;:—-") + "…"
@@ -79,6 +121,7 @@ def _short(text: str, words: int) -> str:
 def build_variant(content: DeckContent, profile: TemplateProfile, vid: str, name: str, strategy: str,
                   description: str = "") -> VariantPlan:
     pick = CanvasPicker(profile)
+    pats = PatternPicker(profile)
     k = IDX.get(strategy, 0)
     plan = VariantPlan(id=vid, name=name, strategy=strategy, description=description)
     slides = list(content.slides)
@@ -162,6 +205,11 @@ def build_variant(content: DeckContent, profile: TemplateProfile, vid: str, name
                 recipe = "rows"
         c = pick.content_canvas(tone, strategy, content_i)
         content_i += 1
+        chosen = pats.pick(s2, RECIPE_INTENT.get(recipe, intent), strategy)
+        if chosen is not None:
+            plan.slides.append(SlideSpec(slide=s2, recipe="pattern", canvas=chosen.id, tone=tone,
+                                         opts={**opts, "fallback": recipe}, alts=[c.id] + pick.alternatives(c)))
+            continue
         plan.slides.append(SlideSpec(slide=s2, recipe=recipe, canvas=c.id, tone=tone, opts=opts, alts=pick.alternatives(c)))
     return plan
 

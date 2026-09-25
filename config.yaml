@@ -62,7 +62,7 @@ audit:
 skills:
   template_analyst: v1
   narrative_analyst: v1
-  deck_planner: v3
+  deck_planner: v4
   text_condenser: v1
   slide_auditor: v1
   deck_auditor: v2

@@ -93,6 +93,9 @@ def parse_template(src: Path, name: Optional[str] = None, progress: Progress = N
 
     say("Холсты", 0.6)
     render_canvases(tpl, canvases, d / "canvases", an.W, an.H, gap)
+    say("Паттерны шаблона", 0.7)
+    from .patterns import build_patterns
+    patterns = build_patterns(an, slides, [str(x) for x in pngs], gap)
     bg_samples = [c.bg for c in canvases]
     palette = build_palette(an, usable, bg_samples)
     typo = build_typography(an, usable, palette)
@@ -115,7 +118,7 @@ def parse_template(src: Path, name: Optional[str] = None, progress: Progress = N
     profile = TemplateProfile(
         id=tid, name=name or Path(src).stem, file=str(tpl), slide_w=an.W, slide_h=an.H, n_slides=len(slides),
         fonts_found=fonts_found, palette=palette, typography=typo, margins=grid, gap=gap, card_styles=cards,
-        table_style=table, canvases=canvases, slides=infos, narrative=narrative)
+        table_style=table, canvases=canvases, patterns=patterns, slides=infos, narrative=narrative)
 
     if use_llm:
         say("Разметка слайдов моделью", 0.8)

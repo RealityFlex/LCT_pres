@@ -366,7 +366,7 @@ class TemplateAnalyzer:
                 g.items.append({
                     "container": c.sid,
                     "box": _box(c.top).model_dump(),
-                    "members": [self._member(m, c.top) for m in self._flatten(members[c.sid], members)],
+                    "members": _assign_roles([self._member(m, c.top) for m in self._flatten(members[c.sid], members)]),
                 })
             groups.append(g)
         if groups:
@@ -395,7 +395,7 @@ class TemplateAnalyzer:
             box = Box(x=min(s.x for s in xs), y=min(s.y for s in xs),
                       w=max(s.x2 for s in xs) - min(s.x for s in xs), h=max(s.y2 for s in xs) - min(s.y for s in xs))
             g.items.append({"container": None, "box": box.model_dump(),
-                            "members": [self._member(m, None) for m in mem]})
+                            "members": _assign_roles([self._member(m, None) for m in mem])})
         return [g]
 
     def _flatten(self, mem: list[TopItem], members: dict) -> list[TopItem]:
@@ -409,6 +409,11 @@ class TemplateAnalyzer:
     def _member(self, m: TopItem, container: Optional[ShapeInfo]) -> dict:
         s = m.top
         role = "shape"
+        empty_slot = (not m.has_text and s.text_slot and s.ph_type is not None
+                      and s.w > 0.4 * 914400 and s.h > 0.15 * 914400)
+        if empty_slot:
+            return {"sid": m.sid, "role": "text", "box": _box(s).model_dump(), "text": "",
+                    "style": _style_of(s).model_dump(), "insets": list(s.insets)}
         if m.has_text:
             t = m.text.strip()
             if NUMERIC.match(t):
@@ -422,7 +427,7 @@ class TemplateAnalyzer:
         elif container is not None and s.area < 0.08 * container.area:
             role = "marker"
         return {"sid": m.sid, "role": role, "box": _box(s).model_dump(), "text": m.text[:200],
-                "style": _style_of(m.texts()[0]).model_dump() if m.has_text else None}
+                "style": _style_of(m.texts()[0]).model_dump() if m.has_text else None, "insets": list(s.insets)}
 
     def _arrangement(self, shapes: list[ShapeInfo]) -> str:
         ys = {round((s.y + s.h / 2) / (0.1 * self.H)) for s in shapes}
@@ -512,6 +517,33 @@ class TemplateAnalyzer:
                 slots.append(Slot(role=role, sid=s.sid, box=_box(s), style=st,
                                   max_chars=_max_chars(s, st.size), text=it.text[:300]))
         return slots
+
+
+def _assign_roles(members: list[dict]) -> list[dict]:
+    """Роли текстов внутри пункта: number / heading / body / extra (по порядку, кеглю и содержимому)."""
+    texts = [m for m in members if m["role"] in ("heading", "body", "number", "text")]
+    texts.sort(key=lambda m: (m["box"]["y"], m["box"]["x"]))
+    have_head = False
+    have_body = False
+    for m in texts:
+        t = (m.get("text") or "").strip()
+        size = (m.get("style") or {}).get("size") or 12
+        if t and NUMERIC.match(t):
+            m["role"] = "number"
+        elif not t and size >= 28 and m["box"]["w"] < 1.6 * 914400:
+            m["role"] = "number"
+        elif not have_head and (len(t) < 45 or (m.get("style") or {}).get("bold")) and m["box"]["h"] < 1.0 * 914400:
+            m["role"], have_head = "heading", True
+        elif not have_body:
+            m["role"], have_body = "body", True
+        else:
+            m["role"] = "extra"
+    if not have_body:
+        # единственный текстовый слот без заголовка — это тело
+        for m in texts:
+            if m["role"] == "heading" and len([x for x in texts if x["role"] == "heading"]) == 1 and m["box"]["h"] > 0.5 * 914400:
+                m["role"] = "body"
+    return members
 
 
 def _box(s: ShapeInfo) -> Box:

@@ -178,6 +178,11 @@ def collect_overflows(profile: TemplateProfile, content: DeckContent, layouts: l
             continue
         if "title_overflow" in lay.warnings:
             out.append({"slide": s.id, "field": "title", "text": s.title, "max_chars": max(20, int(cap_title * 0.85))})
+        for ov in lay.overflows:
+            field = _find_field(s, str(ov.get("text", "")).replace("\u00a0", " "))
+            if field:
+                out.append({"slide": s.id, "field": field, "text": ov["text"],
+                            "max_chars": max(10, min(int(ov.get("max_chars", 40)), len(ov["text"]) - 3))})
         for e in lay.elements:
             if not e.overflow or not e.paras:
                 continue
@@ -339,13 +344,15 @@ async def run_job(job: JobState, content_override: Optional[DeckContent] = None)
         # --- изображения (генерируются один раз и переиспользуются всеми вариантами)
         prompts = [(sl.id, sl.image_prompt) for sl in content.slides if sl.image_prompt]
         if prompts and image_generator().enabled:
-            store.emit(job, "images", f"Генерирую иллюстрации ({len(prompts)})", 0.22)
-            imgs = await generate_many(prompts, profile.image_style, int(s.images.get("max_per_deck", 3)))
+            store.emit(job, "images", f"Генерирую иллюстрации ({len(prompts)}) — GigaChat / Kandinsky", 0.22)
+            style = profile.image_style or f"минималистичная 3D-иллюстрация, фирменные цвета #{profile.palette.primary}, без текста"
+            imgs = await generate_many(prompts, style, int(s.images.get("max_per_deck", 3)))
             for sl in content.slides:
                 if sl.id in imgs:
                     sl.image = str(imgs[sl.id])
                 elif sl.intent == "image":
                     sl.intent = "bullets"
+            (jd / "content.json").write_text(content.model_dump_json(indent=1), encoding="utf-8")
         else:
             for sl in content.slides:
                 if sl.intent == "image":

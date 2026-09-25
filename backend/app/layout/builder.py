@@ -52,6 +52,11 @@ class DeckBuilder:
         all_top = {pptx_ops.shape_id(el) for el in pptx_ops.top_shapes(slide)}
         pptx_ops.remove_shapes(slide, all_top - keep)
         self._slots(slide, lay, canvas)
+        for op in lay.pattern_ops:
+            try:
+                self._pattern_op(slide, op)
+            except Exception as e:
+                lay.warnings.append(f"pattern_op_failed:{op.get('op')}:{e.__class__.__name__}")
         self._next_id = pptx_ops.next_shape_id(slide)
         for el in lay.elements:
             try:
@@ -98,6 +103,125 @@ class DeckBuilder:
                     limit = (title.box.x + (canvas.title_max_w or self.W)) - x
                     w = max(int(0.6 * INCH_EMU), min(w, limit, int(0.92 * self.W) - x))
                     ext.set("cx", str(int(w)))
+
+    # ================================================================ паттерны
+    def _pattern_op(self, slide, op: dict):
+        el = pptx_ops.find_shape(slide, op["sid"])
+        if el is None:
+            return
+        kind = op["op"]
+        if kind == "move":
+            tag = etree.QName(el).localname
+            xf = first(el, "p:xfrm") if tag == "graphicFrame" else first(el, "p:grpSpPr/a:xfrm") if tag == "grpSp" else first(el, "p:spPr/a:xfrm")
+            off = first(xf, "a:off") if xf is not None else None
+            if off is not None:
+                off.set("x", str(int(off.get("x", 0)) + int(op.get("dx", 0))))
+                off.set("y", str(int(off.get("y", 0)) + int(op.get("dy", 0))))
+        elif kind == "image":
+            self._replace_picture(slide, el, Path(op["path"]))
+        elif kind == "table":
+            self._fill_table(el, op["columns"], op["rows"])
+
+    def _replace_picture(self, slide, el, path: Path):
+        if not path.exists():
+            return
+        blip = first(el, ".//a:blip")
+        if blip is None:
+            return
+        _, rid = slide.part.get_or_add_image_part(str(path))
+        blip.set(qn("r:embed"), rid)
+        # cover-обрезка под рамку без искажения
+        xf = first(el, "p:spPr/a:xfrm")
+        ext = first(xf, "a:ext") if xf is not None else None
+        if ext is None:
+            return
+        bw, bh = int(ext.get("cx")), int(ext.get("cy"))
+        with Image.open(path) as im:
+            iw, ih = im.size
+        bf = blip.getparent()
+        for old in xp(bf, "a:srcRect"):
+            bf.remove(old)
+        src = etree.Element(qn("a:srcRect"))
+        box_ar, img_ar = bw / max(1, bh), iw / max(1, ih)
+        if img_ar > box_ar:
+            cut = int((1 - box_ar / img_ar) / 2 * 100000)
+            src.set("l", str(cut))
+            src.set("r", str(cut))
+        elif img_ar < box_ar:
+            cut = int((1 - img_ar / box_ar) / 2 * 100000)
+            src.set("t", str(cut))
+            src.set("b", str(cut))
+        blip.addnext(src)
+        stretch = first(bf, "a:stretch")
+        if stretch is None:
+            stretch = etree.SubElement(bf, qn("a:stretch"))
+            etree.SubElement(stretch, qn("a:fillRect"))
+
+    @staticmethod
+    def _set_cell(tc, text: str):
+        txb = first(tc, "a:txBody")
+        if txb is None:
+            return
+        paras = xp(txb, "a:p")
+        ppr = first(paras[0], "a:pPr") if paras else None
+        rpr = None
+        for r in xp(txb, ".//a:r"):
+            rpr = first(r, "a:rPr")
+            if rpr is not None:
+                break
+        if rpr is None:
+            e = first(txb, ".//a:endParaRPr")
+            if e is not None:
+                rpr = copy.deepcopy(e)
+                rpr.tag = qn("a:rPr")
+        for p in paras:
+            txb.remove(p)
+        p = etree.SubElement(txb, qn("a:p"))
+        if ppr is not None:
+            p.append(copy.deepcopy(ppr))
+        r = etree.SubElement(p, qn("a:r"))
+        if rpr is not None:
+            r.append(copy.deepcopy(rpr))
+        t = etree.SubElement(r, qn("a:t"))
+        t.text = text
+
+    def _fill_table(self, gf, columns: list[str], rows: list[list[str]]):
+        tbl = first(gf, "a:graphic/a:graphicData/a:tbl")
+        if tbl is None:
+            return
+        trs = xp(tbl, "a:tr")
+        if len(trs) < 2:
+            return
+        ncols = len(columns)
+        grid = first(tbl, "a:tblGrid")
+        gcols = xp(grid, "a:gridCol")
+        if ncols < len(gcols):
+            total = sum(int(g.get("w")) for g in gcols)
+            for g in gcols[ncols:]:
+                grid.remove(g)
+            for tr in trs:
+                for tc in xp(tr, "a:tc")[ncols:]:
+                    tr.remove(tc)
+            kept = xp(grid, "a:gridCol")
+            ksum = sum(int(g.get("w")) for g in kept) or 1
+            for g in kept:
+                g.set("w", str(int(int(g.get("w")) * total / ksum)))
+        header, body_tpl = trs[0], trs[1:]
+        for j, tc in enumerate(xp(header, "a:tc")):
+            self._set_cell(tc, columns[j] if j < len(columns) else "")
+        protos = [copy.deepcopy(t) for t in body_tpl[:2]] or [copy.deepcopy(header)]
+        for t in body_tpl:
+            tbl.remove(t)
+        for i, row in enumerate(rows):
+            tr = copy.deepcopy(protos[i % len(protos)])
+            for j, tc in enumerate(xp(tr, "a:tc")):
+                self._set_cell(tc, row[j] if j < len(row) else "")
+            tbl.append(tr)
+        # высота рамки = сумма строк
+        h = sum(int(tr.get("h", 0)) for tr in xp(tbl, "a:tr"))
+        xf = first(gf, "p:xfrm/a:ext")
+        if xf is not None and h:
+            xf.set("cy", str(h))
 
     # ================================================================ elements
     def _nid(self) -> int:

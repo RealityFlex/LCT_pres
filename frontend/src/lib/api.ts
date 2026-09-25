@@ -133,6 +133,7 @@ export type Brief = {
   slide_count: number | null;
   author: string;
   language: string;
+  images: "auto" | "on" | "off";
 };
 
 export type JobEvent = {

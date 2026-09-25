@@ -277,9 +277,10 @@ class DeterministicAuditor:
                 _issue(issues, "layout_not_from_template", "Слайд собран не на макете шаблона", "template", i,
                        f"Макет «{slide.slide_layout.name}» отсутствует в шаблоне", "error")
             src = self._template_shapes(canvas.source_slide)
+            moved = {op.get("sid") for op in lay.pattern_ops}
             for s in chrome:
                 o = src.get(s.sid)
-                if o is None or s.sid == canvas.title_label_sid:
+                if o is None or s.sid == canvas.title_label_sid or s.sid in moved:
                     continue
                 if abs(o.x - s.x) > tol or abs(o.y - s.y) > tol or (abs(o.w - s.w) > tol and s.kind == "picture"):
                     _issue(issues, "chrome_moved", "Логотип или колонтитул сдвинут", "template", i,
@@ -372,7 +373,7 @@ class DeterministicAuditor:
                     _issue(issues, "placeholder_text", "Остался текст-заглушка", "integrity", i,
                            f"«{PLACEHOLDER_RE.search(s.text).group(0)}» в «{s.text[:40]}»", "error", s, s.sid,
                            {"action": "remove_shape", "sid": s.sid})
-            if not structural and not gen:
+            if not structural and not gen and not any(sf.role == "member" for sf in lay.slots):
                 _issue(issues, "empty_slide", "Пустой слайд или слайд с одним заголовком", "integrity", i,
                        "На слайде только заголовок", "error", None, None, {"action": "recompose"})
             pics = [s for s in tops if s.kind == "picture" and s.area > 0.9 * W * H]

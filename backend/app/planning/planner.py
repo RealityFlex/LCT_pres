@@ -169,7 +169,15 @@ async def plan_deck(brief: Brief, profile: TemplateProfile, run: SkillRun) -> De
     if not n:
         n = auto_slide_count(brief)
     slide_rule = f"ровно {n} (включая титульный и финальный)"
-    max_images = int(s.images.get("max_per_deck", 3)) if (s.images.get("provider") != "none" and s.gigachat_key) else 0
+    img_ok = s.images.get("provider") != "none" and bool(s.gigachat_key)
+    mode = (brief.images or "auto").lower()
+    max_images = 0 if (not img_ok or mode == "off") else int(s.images.get("max_per_deck", 3))
+    image_rule = ("обязательно сделай 2–3 слайда с intent \"image\" (иллюстрация + тезисы)" if mode == "on" and max_images
+                  else "используй intent \"image\" только там, где иллюстрация реально помогает (0–2 слайда)" if max_images
+                  else "не используй intent \"image\"")
+    image_style = profile.image_style or (
+        f"современная минималистичная 3D-иллюстрация, чистый фон, фирменные цвета #{profile.palette.primary}"
+        + (f" и #{profile.palette.accents[0]}" if profile.palette.accents else "") + ", мягкий свет, без текста")
     target = n or 12
     max_sections = 0 if not profile.narrative.has_sections else (3 if target >= 13 else 2 if target >= 9 else 0)
     purpose_key = next((k for k in ARCS if k in (brief.purpose or "").lower()), "проект")
@@ -179,7 +187,7 @@ async def plan_deck(brief: Brief, profile: TemplateProfile, run: SkillRun) -> De
         kicker_rule="шаблон использует кикеры — заполни у всех содержательных слайдов" if profile.narrative.uses_kicker
         else "шаблон не использует кикеры — оставь пустым",
         narrative=narrative_text(profile), title_max=title_capacity(profile), icons=icons.icon_catalog_hint(),
-        max_images=max_images, image_style=profile.image_style or "современная минималистичная 3D-иллюстрация в фирменных цветах",
+        max_images=max_images, image_style=image_style, image_rule=image_rule,
         topic=brief.topic, purpose=brief.purpose, audience=brief.audience or "руководители и команда",
         details=brief.details or "(дополнительных данных нет — не используй цифры)")
     if not isinstance(raw, dict):

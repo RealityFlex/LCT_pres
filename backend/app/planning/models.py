@@ -17,6 +17,7 @@ class Brief(BaseModel):
     slide_count: Optional[int] = None
     author: str = ""
     language: str = "ru"
+    images: str = "auto"             # auto — где уместно | on — обязательно 2–3 иллюстрации | off — без картинок
 
 
 class Item(BaseModel):

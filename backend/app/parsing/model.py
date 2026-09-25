@@ -120,6 +120,27 @@ class ItemGroup(BaseModel):
     count: int = 0
 
 
+class PatternInfo(BaseModel):
+    """Слайд-паттерн шаблона: клонируется целиком, текст пишется в его собственные фигуры."""
+    kind: str                                   # cards | rows | stats | table | chart | image
+    arrangement: str = "row"
+    count: int = 0
+    items: list[dict[str, Any]] = Field(default_factory=list)   # [{container, box, members:[{sid, role, box, style, insets}]}]
+    roles: list[str] = Field(default_factory=list)              # роли, доступные в пункте
+    remove_sids: list[str] = Field(default_factory=list)        # прочие тексты образца (с подложками)
+    lead_sid: Optional[str] = None
+    lead_containers: list[str] = Field(default_factory=list)    # подложка вводного абзаца (удаляется вместе с ним)
+    hollow: bool = False                                        # пустые рамки под скриншоты/фото
+    image_sids: list[str] = Field(default_factory=list)         # картинки, куда можно поставить иллюстрацию
+    table_sid: Optional[str] = None
+    table_rows: int = 0
+    table_cols: int = 0
+    chart_sid: Optional[str] = None
+    chart_box: Optional[Box] = None
+    body_chars: int = 0
+    head_chars: int = 0
+
+
 class Canvas(BaseModel):
     """Слайд-основа: слайд шаблона без контентных фигур."""
     id: str
@@ -138,6 +159,7 @@ class Canvas(BaseModel):
     dirty_reason: Optional[str] = None
     score: float = 0.0
     preview: Optional[str] = None
+    pattern: Optional[PatternInfo] = None
 
 
 class SlideInfo(BaseModel):
@@ -186,6 +208,7 @@ class TemplateProfile(BaseModel):
     card_styles: list[CardStyle] = Field(default_factory=list)
     table_style: TableStyle = Field(default_factory=TableStyle)
     canvases: list[Canvas] = Field(default_factory=list)
+    patterns: list[Canvas] = Field(default_factory=list)   # слайды-паттерны (Canvas.kind == "pattern")
     slides: list[SlideInfo] = Field(default_factory=list)
     narrative: Narrative = Field(default_factory=Narrative)
     logo_boxes: list[Box] = Field(default_factory=list)
@@ -196,6 +219,9 @@ class TemplateProfile(BaseModel):
 
     def canvas(self, cid: str) -> Canvas:
         for c in self.canvases:
+            if c.id == cid:
+                return c
+        for c in self.patterns:
             if c.id == cid:
                 return c
         raise KeyError(cid)

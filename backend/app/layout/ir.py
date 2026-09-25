@@ -83,3 +83,4 @@ class SlideLayout(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     clone_full: bool = False          # клонировать исходный слайд целиком (паттерн шаблона)
     pattern_ops: list[dict[str, Any]] = Field(default_factory=list)
+    overflows: list[dict[str, Any]] = Field(default_factory=list)   # [{text, max_chars}] — не влезло в слот паттерна

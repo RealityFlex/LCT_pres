@@ -53,7 +53,16 @@ class GigaChatImages:
         self._exp = j.get("expires_at", time.time() * 1000 + 25 * 60 * 1000) / 1000
         return self._token
 
+    @staticmethod
+    def _clean(t: str) -> str:
+        """Kandinsky буквально рисует «3D», цифры и кавычки из промпта — заменяем их описаниями."""
+        t = re.sub(r"3[DdДд]-?", "объёмн", t)
+        t = re.sub(r"[«»\"]", "", t)
+        t = re.sub(r"\d+([.,]\d+)?\s*%?", "", t)
+        return re.sub(r"\s+", " ", t).strip()
+
     async def generate(self, prompt: str, style: str = "") -> Path:
+        prompt, style = self._clean(prompt), self._clean(style)
         h = hashlib.sha256((prompt + "|" + style).encode()).hexdigest()[:16]
         target = self.cache / f"{h}.jpg"
         if target.exists():
@@ -65,8 +74,12 @@ class GigaChatImages:
             tok = await self._auth(client)
             body = {"model": self.model, "function_call": "auto", "messages": [
                 {"role": "system", "content": "Ты — иллюстратор корпоративных презентаций. Рисуешь без текста, букв и логотипов."},
-                {"role": "user", "content": f"Нарисуй: {prompt}. Стиль: {style}. Без текста и надписей, горизонтальный кадр."}]}
-            r = await client.post(f"{API}/chat/completions", json=body, headers={"Authorization": f"Bearer {tok}"})
+                {"role": "user", "content": f"Нарисуй: {prompt}. Стиль: {style}. Никаких букв, цифр, надписей и логотипов в кадре, горизонтальная композиция."}]}
+            for attempt in range(4):
+                r = await client.post(f"{API}/chat/completions", json=body, headers={"Authorization": f"Bearer {tok}"})
+                if r.status_code != 429:
+                    break
+                await asyncio.sleep(2.5 * (attempt + 1))   # личный тариф: один запрос одновременно
             if r.status_code != 200:
                 raise ImageGenError(f"GigaChat {r.status_code}: {r.text[:120]}")
             content = r.json()["choices"][0]["message"]["content"]
@@ -104,5 +117,6 @@ async def generate_many(prompts: list[tuple[str, str]], style: str, limit: int) 
         except Exception as e:
             log.warning("image %s failed: %s", sid, e)
 
-    await asyncio.gather(*(one(s, p) for s, p in prompts[:limit]))
+    for s, p in prompts[:limit]:   # последовательно: у GigaChat лимит на параллельные запросы
+        await one(s, p)
     return out

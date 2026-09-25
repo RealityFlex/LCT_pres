@@ -208,10 +208,18 @@ class Composer:
     # ================================================================= entry
     def compose(self, spec: SlideSpec, canvas: Canvas, index: int, deck_title: str = "",
                 extras: Optional[dict] = None) -> SlideLayout:
+        if spec.recipe == "pattern" and canvas.kind != "pattern":
+            spec = spec.model_copy(update={"recipe": spec.opts.get("fallback", "cards")})
         look = Look(self.p, canvas)
         lay = SlideLayout(index=index, content_id=spec.slide.id, canvas=canvas.id, recipe=spec.recipe,
                           notes=spec.slide.notes)
         cb = self.fill_slots(spec, canvas, look, lay, index, deck_title, extras)
+        if canvas.kind == "pattern":
+            from .patterns import PatternFiller
+            if not hasattr(self, "_pf"):
+                self._pf = PatternFiller(self.p, self)
+            self._pf.fill(spec, canvas, lay, look)
+            return lay
         if canvas.kind in ("title", "section", "closing") and spec.recipe in ("title", "section", "closing", "clone"):
             return lay
         s = spec.slide
@@ -239,7 +247,7 @@ class Composer:
             except KeyError:
                 continue
             lay = self.compose(spec, canvas, index, deck_title, dict(extras or {}))
-            bad = ("title_overflow" in lay.warnings) * 10 + sum(1 for e in lay.elements if e.overflow)
+            bad = ("title_overflow" in lay.warnings) * 10 + sum(1 for e in lay.elements if e.overflow) + 3 * len(lay.overflows)
             if bad == 0:
                 return lay
             tried.append((bad, len(tried), lay))

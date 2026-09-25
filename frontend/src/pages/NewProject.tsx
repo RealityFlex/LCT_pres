@@ -31,7 +31,7 @@ const PURPOSE_ICON: Record<string, ReactNode> = {
 };
 
 function loadDraft(): Brief {
-  const empty: Brief = { topic: "", purpose: "проект", audience: "", details: "", slide_count: null, author: "", language: "ru" };
+  const empty: Brief = { topic: "", purpose: "проект", audience: "", details: "", slide_count: null, author: "", language: "ru", images: "auto" };
   try {
     const d = JSON.parse(localStorage.getItem(DRAFT) || "null");
     return d ? { ...empty, ...d } : empty;
@@ -224,6 +224,15 @@ export default function NewProject() {
                 </div>
               </div>
 
+              <div>
+                <Label hint="GigaChat · Kandinsky, в стиле шаблона">Иллюстрации</Label>
+                <Segmented value={brief.images} onChange={(v) => set("images", v)} options={[
+                  { value: "auto", label: "Где уместно" },
+                  { value: "on", label: "Обязательно" },
+                  { value: "off", label: "Без картинок" },
+                ]} />
+              </div>
+
               <div className="grid gap-6 sm:grid-cols-2">
                 <div>
                   <Label hint={manual ? `${brief.slide_count ?? 12} слайдов` : "по объёму брифа"}>Количество слайдов</Label>
@@ -271,6 +280,7 @@ export default function NewProject() {
                 <div className="flex justify-between"><span className="text-fg-3">Слайдов в варианте</span><span className="font-semibold">≈ {estSlides}</span></div>
                 <div className="flex justify-between"><span className="text-fg-3">Назначение</span><span className="font-semibold">{PURPOSES.find((p) => p.id === brief.purpose)?.label}</span></div>
                 <div className="flex justify-between"><span className="text-fg-3">Цифр в данных</span><span className="font-semibold">{nums}</span></div>
+                <div className="flex justify-between"><span className="text-fg-3">Иллюстрации</span><span className="font-semibold">{brief.images === "off" ? "нет" : brief.images === "on" ? "2–3 слайда" : "по смыслу"}</span></div>
                 <div className="flex justify-between"><span className="text-fg-3">Бюджет времени</span><span className="font-semibold">до 5 минут</span></div>
               </div>
               <Button variant="primary" size="lg" glow className="w-full" loading={create.isPending} disabled={!ready} onClick={submit}
