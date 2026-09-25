@@ -145,11 +145,11 @@ def _template_rpr(sp_el):
 
 
 def _template_ppr(sp_el):
-    for p in xp(sp_el, ".//a:txBody/a:p"):
+    for p in xp(sp_el, ".//p:txBody/a:p | .//a:txBody/a:p"):
         if "".join(p.itertext()).strip():
             ppr = first(p, "a:pPr")
             return copy.deepcopy(ppr) if ppr is not None else None
-    p = first(sp_el, ".//a:txBody/a:p/a:pPr")
+    p = first(sp_el, ".//p:txBody/a:p/a:pPr | .//a:txBody/a:p/a:pPr")
     return copy.deepcopy(p) if p is not None else None
 
 
@@ -164,6 +164,16 @@ def set_text(sp_el, paragraphs: list, size_pt: Optional[float] = None, color: Op
         return
     rpr_t = _template_rpr(sp_el)
     ppr_t = _template_ppr(sp_el)
+    if ppr_t is not None and first(ppr_t, "a:buNone") is not None and int(ppr_t.get("indent", "0")) < 0:
+        # висячий отступ под маркер при выключенном маркере: однострочный образец его «прячет», перенос — нет
+        ppr_t.set("marL", "0")
+        ppr_t.set("indent", "0")
+    n_src = sum(1 for p in xp(txb, "a:p") if "".join(p.itertext()).strip())
+    if ppr_t is not None and len(paragraphs) < n_src:
+        # разреженный интервал образца рассчитан на список коротких строк, а не на переносимую фразу
+        for sp in xp(ppr_t, "a:lnSpc/a:spcPct"):
+            if int(sp.get("val", "100000")) > 150000:
+                sp.set("val", "130000")
     for p in xp(txb, "a:p"):
         txb.remove(p)
     for item in paragraphs:

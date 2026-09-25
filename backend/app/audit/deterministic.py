@@ -77,7 +77,10 @@ def _need_height(s: ShapeInfo) -> float:
     for p in s.paras:
         size = p.style.size or 12
         t = p.text.upper() if p.style.caps else p.text
-        h += fonts.text_height_pt(t, w * 0.99, p.style.font or "Arial", size, p.style.bold, p.line_spacing or 1.0)
+        ls = p.line_spacing or 1.0
+        if len(s.paras) == 1 and len(fonts.wrap_lines(t, w * 0.99, p.style.font or "Arial", size, p.style.bold)) <= 1:
+            ls = 1.0   # одна строка (крупная цифра-декор): интервал лишь сдвигает её, текст не теряется
+        h += fonts.text_height_pt(t, w * 0.99, p.style.font or "Arial", size, p.style.bold, ls)
     return h
 
 
@@ -205,6 +208,8 @@ class DeterministicAuditor:
             for s in texts:
                 need = _need_height(s)
                 avail = (s.h - s.insets[1] - s.insets[3]) / EMU_PT
+                if len(s.paras) == 1 and need <= s.h / EMU_PT * 1.05:
+                    continue   # одна строка заходит лишь на внутренние поля рамки — текст не обрезается
                 if need > avail * 1.08 + 2:
                     _issue(issues, "text_overflow", "Текст не поместился в рамку", "layout", i,
                            f"«{s.text[:50]}»: нужно {need:.0f} pt, доступно {avail:.0f} pt", "error", s, _ir_id(s.name) or s.sid,
@@ -373,7 +378,7 @@ class DeterministicAuditor:
                     _issue(issues, "placeholder_text", "Остался текст-заглушка", "integrity", i,
                            f"«{PLACEHOLDER_RE.search(s.text).group(0)}» в «{s.text[:40]}»", "error", s, s.sid,
                            {"action": "remove_shape", "sid": s.sid})
-            if not structural and not gen and not any(sf.role == "member" for sf in lay.slots):
+            if not structural and not gen and not any(sf.role == "member" for sf in lay.slots) and not lay.pattern_ops:
                 _issue(issues, "empty_slide", "Пустой слайд или слайд с одним заголовком", "integrity", i,
                        "На слайде только заголовок", "error", None, None, {"action": "recompose"})
             pics = [s for s in tops if s.kind == "picture" and s.area > 0.9 * W * H]

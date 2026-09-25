@@ -178,6 +178,8 @@ def font_available(family: str) -> bool:
 
 
 FALLBACKS = ["Arial", "Liberation Sans", "DejaVu Sans", "Helvetica", "Segoe UI"]
+# чем рендерер (LibreOffice) подменяет глифы, которых нет в шрифте: мерим тем же, чем рисуется
+RENDER_FALLBACK = "Segoe UI" if sys.platform == "win32" else "DejaVu Sans"
 
 
 @lru_cache(maxsize=256)
@@ -201,7 +203,14 @@ def has_cyrillic(path: str) -> bool:
 def _resolve(family: str, bold: bool) -> tuple[Optional[str], float]:
     p = find_font_file(family, bold)
     if p and has_cyrillic(p):
-        return p, 1.0
+        # жирного файла нет — рендерер утолщает обычный начертание, строка выходит шире
+        synthetic = bold and not re.search(r"(bold|black|heavy|semibold|demi|extrab)", Path(p).stem, re.I)
+        return p, 1.07 if synthetic else 1.0
+    if p:
+        # шрифт есть, но без кириллицы — русские буквы рисуются запасным шрифтом рендерера
+        q = find_font_file(RENDER_FALLBACK, bold)
+        if q:
+            return q, 1.02
     for fb in FALLBACKS:
         p = find_font_file(fb, bold)
         if p:
@@ -224,7 +233,8 @@ def text_width_pt(text: str, family: str, size_pt: float, bold: bool = False,
 
 def line_height_factor(family: str) -> float:
     """Высота строки в долях кегля (single spacing ≈ ascent+descent)."""
-    path, _ = _resolve(family or "Arial", False)
+    # высоту строки задаёт шрифт абзаца, даже если отдельные глифы рисуются запасным
+    path = find_font_file(family or "Arial", False) or _resolve(family or "Arial", False)[0]
     if path is None:
         return 1.2
     try:

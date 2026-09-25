@@ -38,8 +38,8 @@ def eligible(pat: Canvas, s: ContentSlide, intent: str) -> Optional[float]:
         return None
     items = _items(s)
     score = pat.score
-    if pi.hollow and not s.image:
-        return None
+    if (pi.hollow or pi.image_sids) and not s.image:
+        return None   # в образце фото/скриншот его темы — без своей картинки он останется чужим
     if pi.kind in ("cards", "rows", "stats"):
         k = len(items)
         if intent == "comparison":
@@ -181,8 +181,15 @@ class PatternFiller:
         s = spec.slide
         items = _items(s)
         if spec.slide.intent == "comparison" and s.columns:
-            items = [Item(head=c.title, text="; ".join(c.points[:4])) for c in s.columns]
+            items = [Item(head=c.title, text="\n".join(f"• {pt}" for pt in c.points[:4])) for c in s.columns]
         k = min(len(items), pi.count)
+        by_role: dict[str, list[tuple[SlotFill, float]]] = {}
+
+        def put(m: dict, sf: SlotFill) -> None:
+            lay.slots.append(sf)
+            base = (m.get("style") or {}).get("size") or look.body_size
+            by_role.setdefault(m["role"], []).append((sf, base))
+
         for i, slot in enumerate(pi.items):
             members = slot["members"]
             if i >= k:
@@ -197,18 +204,28 @@ class PatternFiller:
                 r = m["role"]
                 if r == "heading":
                     txt = it.head or it.text
-                    lay.slots.append(self._fit(m, txt, look, lay, bg=bg))
+                    put(m, self._fit(m, txt, look, lay, bg=bg))
                 elif r == "body":
                     txt = it.text if ("heading" in roles and it.head) else " — ".join(x for x in (it.head, it.text) if x)
                     if txt:
-                        lay.slots.append(self._fit(m, txt, look, lay, bg=bg))
+                        put(m, self._fit(m, txt, look, lay, bg=bg))
                     else:
                         lay.remove_sids.append(m["sid"])
                 elif r == "number":
                     v = it.value if it.value and len(it.value) <= 9 else f"{i + 1:02d}"
-                    lay.slots.append(self._fit(m, v, look, lay, lines=1, bg=bg))
+                    put(m, self._fit(m, v, look, lay, lines=1, bg=bg))
                 elif r == "extra":
                     lay.remove_sids.append(m["sid"])
+                elif r == "icon":
+                    # иконка образца про его тему — меняем на тематическую, в цвете исходной
+                    lay.pattern_ops.append({"op": "icon", "sid": m["sid"], "name": it.icon or it.head, "i": i})
+        # одинаковые роли в соседних пунктах — одним кеглем (по самому тесному)
+        for fills in by_role.values():
+            eff = [sf.size or base for sf, base in fills]
+            low = min(eff, default=0)
+            for (sf, base), e in zip(fills, eff):
+                if e > low:
+                    sf.size = low
         # меньше пунктов, чем в образце: оставшиеся равномерно по исходному пролёту
         if 0 < k < pi.count and pi.arrangement in ("row", "column"):
             boxes = [Box(**sl["box"]) for sl in pi.items]

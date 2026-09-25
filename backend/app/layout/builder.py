@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 from xml.sax.saxutils import escape
 
+import numpy as np
 from lxml import etree
 from PIL import Image
 from pptx import Presentation
@@ -121,6 +122,34 @@ class DeckBuilder:
             self._replace_picture(slide, el, Path(op["path"]))
         elif kind == "table":
             self._fill_table(el, op["columns"], op["rows"])
+        elif kind == "icon":
+            self._replace_icon(slide, el, op.get("name") or "", op.get("i", 0))
+
+    FALLBACK_ICONS = ("lightbulb", "target", "eye", "message-circle", "zap", "compass", "flag", "star")
+
+    def _replace_icon(self, slide, el, query: str, i: int = 0):
+        blip = first(el, ".//a:blip")
+        if blip is None:
+            return
+        color = "000000"
+        try:
+            old = slide.part.rels[blip.get(qn("r:embed"))].target_part.blob
+            with Image.open(io.BytesIO(old)) as im:
+                a = np.asarray(im.convert("RGBA").resize((64, 64))).reshape(-1, 4).astype(np.int32)
+            px = a[a[:, 3] > 128][:, :3]
+            if len(px):
+                sat = px.max(1) - px.min(1)
+                pick = px[sat > 40] if (sat > 40).sum() > 20 else px[px.sum(1) < 600]
+                if len(pick):
+                    color = "%02X%02X%02X" % tuple(int(v) for v in np.median(pick, axis=0))
+        except Exception:
+            pass
+        name = icons.find_icon(query) or self.FALLBACK_ICONS[i % len(self.FALLBACK_ICONS)]
+        _, rid = slide.part.get_or_add_image_part(io.BytesIO(icons.render_icon(name, color, px=320, stroke=1.6)))
+        blip.set(qn("r:embed"), rid)
+        bf = blip.getparent()
+        for s in xp(bf, "a:srcRect"):
+            bf.remove(s)
 
     def _replace_picture(self, slide, el, path: Path):
         if not path.exists():

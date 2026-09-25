@@ -57,6 +57,7 @@ class GigaChatImages:
     def _clean(t: str) -> str:
         """Kandinsky буквально рисует «3D», цифры и кавычки из промпта — заменяем их описаниями."""
         t = re.sub(r"3[DdДд]-?", "объёмные ", t)
+        t = re.sub(r"\([^)]*\)", "", t)   # скобки обычно перечисляют бренды и логотипы
         t = re.sub(r"[«»\"]", "", t)
         t = re.sub(r"\d+([.,]\d+)?\s*%?", "", t)
         return re.sub(r"\s+", " ", t).strip()

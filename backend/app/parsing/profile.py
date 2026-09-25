@@ -59,10 +59,11 @@ def parse_template(src: Path, name: Optional[str] = None, progress: Progress = N
     t0 = time.time()
     say = progress or (lambda m, p: None)
     tid = file_hash(src)
-    if not force:
-        cached = load_profile(tid)
-        if cached is not None:
-            return cached
+    cached = load_profile(tid)
+    if cached is not None and not force:
+        return cached
+    if cached is not None and not name:
+        name = cached.name   # повторный разбор не должен терять название, данное пользователем
     d = template_dir(tid)
     d.mkdir(parents=True, exist_ok=True)
     tpl = d / "template.pptx"

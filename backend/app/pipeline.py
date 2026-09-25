@@ -244,6 +244,12 @@ def build_and_render(profile: TemplateProfile, layouts: list[SlideLayout], vdir:
     return {"pptx": pptx, "pdf": pdf, "pngs": pngs}
 
 
+def short_titles(profile) -> bool:
+    """Нарратив шаблона — короткие заголовки-темы (2–3 слова), а не заголовки-выводы."""
+    n = profile.narrative
+    return bool(n and 0 < (n.avg_title_words or 0) <= 3.5)
+
+
 def slide_kinds(profile: TemplateProfile, layouts: list[SlideLayout]) -> list[str]:
     out = []
     for lay in layouts:
@@ -270,7 +276,7 @@ async def audit_variant(profile: TemplateProfile, layouts: list[SlideLayout], fi
     tasks = [det_task]
     if contextual:
         tasks.append(audit_slides(layouts, files["pngs"], slide_kinds(profile, layouts), source, run,
-                                  title_capacity(profile), deadline))
+                                  title_capacity(profile), deadline, short_titles(profile)))
         tasks.append(audit_deck(layouts, run))
     res = await asyncio.gather(*tasks, return_exceptions=True)
     issues: list[Issue] = []
@@ -457,7 +463,8 @@ async def fix_variant(job: JobState, vid: str, issue_ids: list[str]) -> dict:
         sub_l = [layouts[n - 1] for n in idx if n - 1 < len(layouts)]
         sub_p = [files["pngs"][n - 1] for n in idx if n - 1 < len(files["pngs"])]
         kinds = slide_kinds(profile, sub_l)
-        ctx, _ = await audit_slides(sub_l, sub_p, kinds, src, run, title_capacity(profile))
+        ctx, _ = await audit_slides(sub_l, sub_p, kinds, src, run, title_capacity(profile),
+                                    short_titles=short_titles(profile))
         for iss in ctx:  # перенумеровать на реальные номера
             iss.slide = idx[iss.slide - 1]
             iss.id = f"{iss.check}-{iss.slide}-r{vs.revision}"

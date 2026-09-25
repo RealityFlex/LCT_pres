@@ -98,6 +98,11 @@ def draft_canvases(an: TemplateAnalyzer, slides: list[SlideAnalysis], grid: Box,
             if not any(sl.role == "title" for sl in sa.slots):
                 continue
             drop = sa.removable | _removable_containers(sa)
+            # «стена логотипов» (≥3 небольших картинки) — иллюстрация темы образца, а не оформление
+            pics = [it for it in sa.items if it.sid in sa.content and it.top.kind == "picture"
+                    and it.top.area < 0.06 * W * H]
+            if len(pics) >= 3:
+                drop |= {it.sid for it in pics}
             keep = [it.sid for it in sa.items if it.sid not in drop]
         else:
             if sa.title is None:

@@ -250,7 +250,8 @@ class TemplateAnalyzer:
                 continue
             is_bg = not it.has_text and s.area >= 0.6 * slide_area and s.kind in ("picture", "shape", "group")
             is_ph_chrome = s.ph_type in ("sldNum", "ftr", "dt")
-            in_footer = s.y >= footer_y and s.h <= 0.12 * H and (not it.has_text or len(it.text) < 40)
+            # колонтитул — мелкий текст; крупная подпись внизу (элемент схемы) — контент
+            in_footer = s.y >= footer_y and s.h <= 0.12 * H and (not it.has_text or (len(it.text) < 40 and it.max_size <= 12.5))
             small_corner = (s.area < 0.035 * slide_area and not it.has_text and s.kind in ("picture", "group")
                             and (s.y2 < 0.14 * H or s.y > 0.86 * H))
             page_num = it.has_text and NUMERIC.match(it.text or "") and s.y > 0.85 * H and s.area < 0.01 * slide_area
@@ -372,30 +373,90 @@ class TemplateAnalyzer:
         if groups:
             groups.sort(key=lambda g: g.count * sum(len(i["members"]) for i in g.items), reverse=True)
             return groups
-        # запасной путь: повторяющиеся текстовые сигнатуры
-        texts = [it for it in cont if it.has_text and it.top.kind != "group" and it.top.kind != "table"]
-        sig_sets: dict[tuple, list[TopItem]] = defaultdict(list)
+        # запасной путь: пункты без подложек — наборы текстов одного стиля, выровненные в ряд/колонку/сетку
+        return self._text_groups(cont)
+
+    @staticmethod
+    def _bins(vals: list[float], tol: float) -> int:
+        vals = sorted(vals)
+        n = 1
+        for a, b in zip(vals, vals[1:]):
+            if b - a > tol:
+                n += 1
+        return n
+
+    def _regular(self, v: list[TopItem]) -> Optional[str]:
+        """Расположение набора, если оно регулярное (ряд, колонка, полная сетка без наложений), иначе None."""
+        W, H = self.W, self.H
+        tops = [it.top for it in v]
+        rows = self._bins([s.y + s.h / 2 for s in tops], 0.08 * H)
+        cols = self._bins([s.x + s.w / 2 for s in tops], 0.08 * W)
+        n = len(v)
+        for i, a in enumerate(tops):
+            for b in tops[i + 1:]:
+                ix = min(a.x2, b.x2) - max(a.x, b.x)
+                iy = min(a.y2, b.y2) - max(a.y, b.y)
+                if ix > 0.05 * min(a.w, b.w) and iy > 0.05 * min(a.h, b.h):
+                    return None
+        if rows == 1 and cols == n:
+            return "row"
+        if cols == 1 and rows == n:
+            return "column"
+        if rows >= 2 and cols >= 2 and rows * cols == n:
+            return "grid"
+        return None
+
+    def _text_groups(self, cont: list[TopItem]) -> list[ItemGroup]:
+        W, H = self.W, self.H
+        texts = [it for it in cont if it.has_text and it.top.kind not in ("group", "table")]
+        sets: dict[tuple, list[TopItem]] = defaultdict(list)
         for it in texts:
-            s = it.top
-            sig_sets[(round(s.w / (0.08 * INCH)), round(s.h / (0.08 * INCH)), round(it.max_size))].append(it)
-        sets = [v for v in sig_sets.values() if len(v) >= 2]
-        if not sets:
+            sets[("t", round(it.max_size), bool(it.top.style.bold), bool(NUMERIC.match(it.text)))].append(it)
+        # мелкие картинки близкого размера (иконки пунктов)
+        pics = sorted((it for it in cont if it.top.kind == "picture" and it.top.area < 0.05 * W * H),
+                      key=lambda it: it.top.area)
+        for it in pics:
+            for key, v in sets.items():
+                r = v[0].top
+                if key[0] == "p" and abs(r.w - it.top.w) <= 0.25 * r.w and abs(r.h - it.top.h) <= 0.25 * r.h:
+                    v.append(it)
+                    break
+            else:
+                sets[("p", len(sets))].append(it)
+        cand = [(k, v, self._regular(v)) for k, v in sets.items() if k[0] == "t" and 2 <= len(v) <= 6]
+        cand = [c for c in cand if c[2]]
+        if not cand:
             return []
-        # объединяем наборы одинаковой мощности, выровненные по одной оси
-        by_count: dict[int, list[list[TopItem]]] = defaultdict(list)
-        for v in sets:
-            by_count[len(v)].append(v)
-        best_n, best_sets = max(by_count.items(), key=lambda kv: (len(kv[1]) * kv[0], kv[0]))
-        arr = self._arrangement([v.top for v in best_sets[0]])
-        ordered = [self._order(v, arr) for v in best_sets]
-        g = ItemGroup(count=best_n, arrangement=arr)
-        for k in range(best_n):
-            mem = [ordered[j][k] for j in range(len(ordered))]
+        # якорь — самый многочисленный регулярный набор; при равенстве — жирные ненумерованные (заголовки пунктов)
+        key0, anchors, arr = max(cand, key=lambda c: (len(c[1]), c[0][2], not c[0][3], c[0][1]))
+        n = len(anchors)
+        anchors = self._order(anchors, arr)
+        centers = [(a.top.x + a.top.w / 2, a.top.y + a.top.h / 2) for a in anchors]
+        items: list[list[TopItem]] = [[a] for a in anchors]
+        for key, v in sets.items():
+            if key == key0 or len(v) != n:
+                continue
+            ordered = self._order(v, arr)
+            ok = True
+            for k, m in enumerate(ordered):
+                cx, cy = m.top.x + m.top.w / 2, m.top.y + m.top.h / 2
+                d = [((cx - ax) ** 2 + (cy - ay) ** 2) for ax, ay in centers]
+                if min(range(n), key=lambda j: d[j]) != k:
+                    ok = False
+                    break
+            if ok:
+                for k, m in enumerate(ordered):
+                    items[k].append(m)
+        g = ItemGroup(count=n, arrangement=arr)
+        for mem in items:
             xs = [m.top for m in mem]
             box = Box(x=min(s.x for s in xs), y=min(s.y for s in xs),
                       w=max(s.x2 for s in xs) - min(s.x for s in xs), h=max(s.y2 for s in xs) - min(s.y for s in xs))
-            g.items.append({"container": None, "box": box.model_dump(),
-                            "members": _assign_roles([self._member(m, None) for m in mem])})
+            ms = [self._member(m, None) for m in mem]
+            for m, src in zip(ms, mem):
+                if src.top.kind == "picture":
+                    m["role"] = "icon"
+            g.items.append({"container": None, "box": box.model_dump(), "members": _assign_roles(ms)})
         return [g]
 
     def _flatten(self, mem: list[TopItem], members: dict) -> list[TopItem]:

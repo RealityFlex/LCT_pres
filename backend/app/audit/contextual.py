@@ -60,7 +60,9 @@ def _small_png(path: Path, width: int = 1024) -> bytes:
 
 
 async def audit_slides(layouts: list[SlideLayout], pngs: list[Path], kinds: list[str], source: str,
-                       run: SkillRun, title_max: int = 70, deadline: Optional[float] = None) -> tuple[list[Issue], dict]:
+                       run: SkillRun, title_max: int = 70, deadline: Optional[float] = None,
+                       short_titles: bool = False) -> tuple[list[Issue], dict]:
+    """short_titles — шаблон сам использует короткие заголовки-темы: «нет вывода» тогда лишь подсказка."""
     import time
     issues: list[Issue] = []
     raw: dict = {}
@@ -82,8 +84,19 @@ async def audit_slides(layouts: list[SlideLayout], pngs: list[Path], kinds: list
             a = res.get(q)
             if not isinstance(a, dict) or a.get("ok", True) is not False:
                 continue
-            if kinds[i - 1] in ("title", "section", "closing", "agenda") and q in ("q1", "q3", "q5"):
+            if kinds[i - 1] in ("title", "section", "closing", "agenda") and q in ("q1", "q2", "q3", "q5"):
                 continue
+            text = slide_text(lay).casefold()
+            if q == "q8":
+                # VLM иногда «находит» опечатку, которой нет: слово должно быть в тексте и отличаться от исправления
+                pairs = [t for t in (res.get("typos") or []) if isinstance(t, dict)
+                         and str(t.get("wrong") or "").strip() and str(t.get("wrong")).casefold() in text
+                         and str(t.get("wrong")).strip().casefold() != str(t.get("right") or "").strip().casefold()]
+                if not pairs:
+                    continue
+                res["typos"] = pairs
+            if q == "q1" and short_titles:
+                sev = "info"
             fix = None
             act = FIX_FOR.get(q)
             if act == "rewrite_title" and res.get("better_title"):

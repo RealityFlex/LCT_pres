@@ -119,6 +119,9 @@ class Look:
             surf = cs.fill or self.bg
             # светлые карточки на тёмном фоне и наоборот допустимы; главное — читаемость текста
             txt = readable([cs.text_color, pal.text_dark, pal.text_light], surf, 4.5)
+            if max(contrast(c, surf) for c in (txt, pal.text_light, pal.text_dark, "FFFFFF", "000000") if c) < 4.5 \
+                    or (accent and max(contrast(c, surf) for c in (pal.text_light, pal.text_dark) if c) < 4.5):
+                continue   # на такой заливке мелкий текст не читается ни светлым, ни тёмным цветом
             score = cs.weight
             if cs.fill and luminance(cs.fill) < 0.3 and not self.dark and not accent:
                 score *= 0.3

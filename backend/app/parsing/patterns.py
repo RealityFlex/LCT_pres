@@ -134,7 +134,13 @@ def build_patterns(an: TemplateAnalyzer, slides: list[SlideAnalysis], pngs: list
             info = PatternInfo(kind="image")
         if info is None:
             continue
-        info.image_sids = [p.sid for p in pics][:2] if info.kind in ("image", "cards", "rows") else []
+        # заменяем одну картинку; прочие фото/скриншоты образца остались бы чужим контентом — такой образец не годится
+        pic_ids = {p.sid for p in pics[:1]}
+        foreign = [it for it in cont if it.top.kind == "picture" and it.sid not in used and it.sid not in pic_ids
+                   and it.top.area >= 0.012 * W * H and not _decorative(an, sa, it.sid)]
+        if foreign:
+            continue
+        info.image_sids = [p.sid for p in pics][:1] if info.kind in ("image", "cards", "rows") else []
         used |= set(info.image_sids)
         # ---- прочие тексты образца: вводный абзац или удалить (с подложкой)
         extras = [it for it in cont if it.has_text and it.sid not in used]

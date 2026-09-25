@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Optional
 
 from ..parsing.model import Box, Canvas, Slot, TemplateProfile
@@ -16,6 +17,7 @@ from ..parsing.ooxml import contrast
 from .style import CardChoice, Look, mix, readable
 
 INCH = 914400
+GENERIC_CAPTION = re.compile(r"^(итог|итоги|вывод|выводы|главное|главный вывод|резюме|мысль|ключевая мысль|суть|результат|результаты|подпись|цитата)\W*$", re.I)
 
 
 def min_contrast(size: float, bold: bool) -> float:
@@ -780,10 +782,11 @@ class Composer:
                        pref, look.body_size, look.heading, bold=False, valign="ctr", line_spacing=1.05)
         lay.elements.append(el)
         cap = next((it.head or it.text for it in s.items if (it.head or it.text) and (it.head or it.text) != text), "")
-        if cap:
+        # подпись-заглушка («Итог», «Вывод») ничего не сообщает — только имя автора или источник
+        if cap and not GENERIC_CAPTION.match(cap.strip()):
             lay.elements.append(self.text(look, Box(x=cb.x, y=cb.y + int(cb.h * 0.74), w=w, h=int(cb.h * 0.24)),
                                           self._paras([cap]), "caption", look.body_font, look.body_size, look.min_size,
-                                          look.accent, bold=True))
+                                          readable([look.accent, look.heading], look.bg, 4.5, [look.fg]), bold=True))
 
     # ---------------------------------------------------------------- image + text
     def r_image_text(self, spec: SlideSpec, look: Look, cb: Box, lay: SlideLayout):
