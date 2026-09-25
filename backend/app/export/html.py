@@ -37,13 +37,15 @@ else if(e.key==='Escape'){{document.body.classList.remove('present')}}}});
 
 
 def pdf_to_html(pdf: Path, out: Path, title: str, texts: list[str] | None = None) -> Path:
-    doc = pymupdf.open(pdf)
+    from ..core.mupdf_lock import LOCK
     parts = []
-    for i, page in enumerate(doc):
-        svg = page.get_svg_image(text_as_path=True)
-        svg = svg[svg.find("<svg"):]
-        alt = html.escape(texts[i]) if texts and i < len(texts) else ""
-        parts.append(f'<section id="s{i + 1}" aria-label="Слайд {i + 1}">{svg}<div class="sr">{alt}</div></section>')
-    doc.close()
+    with LOCK:
+        doc = pymupdf.open(pdf)
+        for i, page in enumerate(doc):
+            svg = page.get_svg_image(text_as_path=True)
+            svg = svg[svg.find("<svg"):]
+            alt = html.escape(texts[i]) if texts and i < len(texts) else ""
+            parts.append(f'<section id="s{i + 1}" aria-label="Слайд {i + 1}">{svg}<div class="sr">{alt}</div></section>')
+        doc.close()
     out.write_text(TEMPLATE.format(title=html.escape(title), n=len(parts), slides="\n".join(parts)), encoding="utf-8")
     return out

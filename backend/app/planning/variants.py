@@ -37,6 +37,11 @@ class CanvasPicker:
         self.content = sorted([c for c in cs if c.kind in ("content", "agenda") and c.clean], key=lambda c: -c.score)
         if not self.content:
             self.content = sorted([c for c in cs if c.kind in ("content", "agenda")], key=lambda c: -c.score)
+        if not self.content:
+            self.content = sorted(cs, key=lambda c: -c.score)   # есть хотя бы титул/раздел — верстаем на нём
+        if not self.content:
+            raise ValueError("В шаблоне не найдено ни одного слайда, пригодного как холст: "
+                             "загрузите шаблон с заголовками и фоном (слайды не должны быть пустыми)")
         W = profile.slide_w
         wide = [c for c in self.content if c.content_box.w >= 0.75 * profile.margins.w and c.content_box.h >= 0.45 * profile.margins.h]
         self.wide = wide or self.content

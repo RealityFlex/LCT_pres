@@ -75,12 +75,14 @@ def render_icon(name: str, color: str, px: int = 256, stroke: float = 2.0) -> by
         path = ICON_DIR / "circle.svg"
     svg = path.read_text(encoding="utf-8").replace("currentColor", f"#{color}")
     svg = re.sub(r'stroke-width="[\d.]+"', f'stroke-width="{stroke}"', svg)
-    doc = pymupdf.open(stream=svg.encode("utf-8"), filetype="svg")
-    page = doc[0]
-    zoom = px / max(page.rect.width, 1)
-    pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=True)
-    data = pix.tobytes("png")
-    doc.close()
+    from ..core.mupdf_lock import LOCK
+    with LOCK:
+        doc = pymupdf.open(stream=svg.encode("utf-8"), filetype="svg")
+        page = doc[0]
+        zoom = px / max(page.rect.width, 1)
+        pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=True)
+        data = pix.tobytes("png")
+        doc.close()
     return data
 
 

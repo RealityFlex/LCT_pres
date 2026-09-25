@@ -186,10 +186,19 @@ def _pixel_title_limit(c: Canvas, sl, arr: np.ndarray, sx: float, sy: float, W: 
     ih, iw = arr.shape[:2]
     text_w = int(text_width_pt(sl.text.upper() if sl.style.caps else sl.text, sl.style.font, sl.style.size,
                                sl.style.bold) * 12700) if sl.text.strip() else 0
-    start = sl.box.x + 91440 + text_w + int(0.35 * 914400)
-    x0, x1 = int(start * sx), min(iw, int(sl.box.x2 * sx))
     y0 = max(0, int((sl.box.y - 0.25 * 914400) * sy))
     y1 = min(ih, int(sl.box.y2 * sy))
+    # где на рендере начинается сам текст (заголовок бывает по центру или справа)
+    text_x = sl.box.x + 91440
+    bx0, bx1 = max(0, int(sl.box.x * sx)), min(iw, int(sl.box.x2 * sx))
+    if text_w and bx1 - bx0 > 10 and y1 > y0:
+        g = arr[max(0, int(sl.box.y * sy)):y1, bx0:bx1].mean(axis=2)
+        gy_, gx_ = np.gradient(g)
+        busy_cols = np.where((np.hypot(gx_, gy_) > 14).mean(axis=0) > 0.04)[0]
+        if len(busy_cols):
+            text_x = max(text_x, int((bx0 + busy_cols[0]) / sx))
+    start = text_x + text_w + int(0.35 * 914400)
+    x0, x1 = int(start * sx), min(iw, int(sl.box.x2 * sx))
     if x1 - x0 < 10 or y1 - y0 < 4:
         return
     gray = arr[y0:y1, x0:x1].mean(axis=2)

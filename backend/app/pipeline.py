@@ -270,7 +270,8 @@ async def audit_variant(profile: TemplateProfile, layouts: list[SlideLayout], fi
     t0 = time.time()
     det = DeterministicAuditor(profile)
     import pymupdf
-    with pymupdf.open(files["pdf"]) as d:
+    from .core.mupdf_lock import LOCK
+    with LOCK, pymupdf.open(files["pdf"]) as d:
         pages = d.page_count
     det_task = asyncio.to_thread(det.run, files["pptx"], layouts, files["pngs"], pages)
     tasks = [det_task]
@@ -453,7 +454,8 @@ async def fix_variant(job: JobState, vid: str, issue_ids: list[str]) -> dict:
     # детерминированный аудит — целиком, контекстный — только по изменённым слайдам
     det = DeterministicAuditor(profile)
     import pymupdf
-    with pymupdf.open(files["pdf"]) as d:
+    from .core.mupdf_lock import LOCK
+    with LOCK, pymupdf.open(files["pdf"]) as d:
         pages = d.page_count
     det_issues, checks = await asyncio.to_thread(det.run, files["pptx"], layouts, files["pngs"], pages)
     keep_ctx = [i for i in report.issues if not i.deterministic and i.slide not in changed and i.id not in set(issue_ids)]

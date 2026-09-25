@@ -86,10 +86,37 @@ def parse_template(src: Path, name: Optional[str] = None, progress: Progress = N
     say("Рендер шаблона", 0.2)
     prev_dir = d / "preview"
     _, pngs = render_deck(tpl, prev_dir, prefix="slide")
+    originals: Optional[list[str]] = None
+    rdesign = None
+    from .raster import analyze as raster_analyze, build_editable, is_raster
+    if is_raster(an, slides):
+        # слайды — картинки без фигур: восстанавливаем редактируемый шаблон по пикселям и разбираем его
+        say("Слайды-картинки: восстанавливаю дизайн-систему по пикселям", 0.3)
+        originals = [str(x) for x in pngs]
+        orig_dir = d / "original"
+        orig_dir.mkdir(exist_ok=True)
+        for x in pngs:
+            shutil.copy2(x, orig_dir / Path(x).name)
+        originals = [str(orig_dir / Path(x).name) for x in pngs]
+        rdesign = raster_analyze(originals)
+        tpl = build_editable(tpl, d / "editable.pptx", rdesign)
+        an = TemplateAnalyzer(tpl)
+        slides = an.run()
+        used = sorted({p.style.font for sa in slides for s in sa.shapes for p in s.paras if p.style.font})
+        for f in used:
+            fonts_found.setdefault(f, fonts.font_available(f) or fonts.try_fetch_google_font(f))
+        fonts.stage_fonts_for_render(list(fonts_found))
+        for old in prev_dir.glob("slide-*"):
+            old.unlink()
+        _, pngs = render_deck(tpl, prev_dir, prefix="slide")
 
     say("Дизайн-токены", 0.5)
     usable = [s for s in slides if not s.service]
     grid, gap = build_grid(an, usable)
+    if rdesign is not None:
+        # у восстановленного шаблона контент исходных слайдов доходит почти до низа слайда
+        from .model import Box
+        grid = Box(x=grid.x, y=grid.y, w=grid.w, h=max(grid.h, int(0.92 * an.H) - grid.y))
     canvases = draft_canvases(an, slides, grid, gap)
 
     say("Холсты", 0.6)
@@ -99,6 +126,13 @@ def parse_template(src: Path, name: Optional[str] = None, progress: Progress = N
     patterns = build_patterns(an, slides, [str(x) for x in pngs], gap)
     bg_samples = [c.bg for c in canvases]
     palette = build_palette(an, usable, bg_samples)
+    if rdesign is not None and rdesign.accents:
+        # акценты растрового шаблона (значки, кнопки на картинках) — по контрасту с фоном
+        from .ooxml import contrast
+        bg = palette.bg_dark if rdesign.dark else palette.bg_light
+        acc = sorted(rdesign.accents, key=lambda c: -contrast(c, bg))
+        palette.accents = list(dict.fromkeys(acc + palette.accents))[:5]
+        palette.chart = list(dict.fromkeys(acc + palette.chart))[:6]
     typo = build_typography(an, usable, palette)
     cards = build_card_styles(an, usable, palette)
     table = build_table_style(usable, palette, typo.body)
@@ -125,9 +159,12 @@ def parse_template(src: Path, name: Optional[str] = None, progress: Progress = N
         say("Разметка слайдов моделью", 0.8)
         try:
             from .vlm_labels import enrich_profile
-            enrich_profile(profile)
+            enrich_profile(profile, originals)
         except Exception as e:  # модель недоступна — профиль остаётся детерминированным
             profile.style_summary = profile.style_summary or f"(VLM недоступна: {e.__class__.__name__})"
+    if originals:
+        profile.style_summary = ("Шаблон из слайдов-картинок: фон, заголовки, карточки и цвета восстановлены по пикселям. "
+                                 + (profile.style_summary or "")).strip()[:700]
     profile.parse_seconds = round(time.time() - t0, 1)
     save_profile(profile)
     say("Готово", 1.0)

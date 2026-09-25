@@ -110,17 +110,19 @@ def pdf_to_pngs(pdf: Path, out_dir: Path, prefix: str = "slide", dpi: int | None
                 pages: list[int] | None = None) -> list[Path]:
     dpi = dpi or int(get_settings().render.get("preview_dpi", 110))
     out_dir.mkdir(parents=True, exist_ok=True)
-    doc = pymupdf.open(pdf)
+    from ..core.mupdf_lock import LOCK
     res = []
     zoom = dpi / 72
-    for i, page in enumerate(doc):
-        if pages is not None and i not in pages:
-            continue
-        pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
-        p = out_dir / f"{prefix}-{i + 1:03d}.png"
-        pix.save(p)
-        res.append(p)
-    doc.close()
+    with LOCK:
+        doc = pymupdf.open(pdf)
+        for i, page in enumerate(doc):
+            if pages is not None and i not in pages:
+                continue
+            pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
+            p = out_dir / f"{prefix}-{i + 1:03d}.png"
+            pix.save(p)
+            res.append(p)
+        doc.close()
     return res
 
 
