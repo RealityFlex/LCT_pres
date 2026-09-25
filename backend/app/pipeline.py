@@ -348,6 +348,12 @@ async def run_job(job: JobState, content_override: Optional[DeckContent] = None)
             raise RuntimeError("шаблон не найден — загрузите его заново")
         store.emit(job, "plan", "Проектирую структуру и тексты колоды", 0.04)
         content = content_override or await plan_deck(job.brief, profile, run)
+        if content_override is None:
+            # числа, которых нет в брифе, правятся до вёрстки, а не только помечаются аудитом
+            from .planning.facts import enforce
+            fixed = await enforce(content, job.brief, run, title_capacity(profile))
+            if fixed:
+                store.emit(job, "plan", f"Сверка с брифом: исправлено слайдов — {len(fixed)}", 0.18)
         job.title = content.title
         jd = job_dir(job.id)
         (jd / "content.json").write_text(content.model_dump_json(indent=1), encoding="utf-8")

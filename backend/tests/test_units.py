@@ -202,3 +202,25 @@ def test_job_interrupted_by_restart_becomes_error():
     j = fresh.get(job.id)
     assert j.status == "error" and "перезапущен" in (j.error or "")
     assert (job_dir(job.id) / "job.json").exists()
+
+
+# ------------------------------------------------------------------ сверка чисел с брифом
+
+def test_unsupported_numbers_are_found():
+    from app.planning.facts import unsupported
+    from app.planning.models import Brief, ContentSlide, DeckContent, Item
+    brief = Brief(topic="Умный склад", details="Время сборки снизилось с 4,5 до 1,5 часа. План: 12 складов. Бюджет 48 млн руб.")
+    c = DeckContent(title="t", slides=[
+        ContentSlide(id="s1", intent="cards", title="Пилот ускорил сборку в 3 раза",
+                     items=[Item(head="Шаг 1", text="Сборка за 1,5 часа"), Item(head="Бюджет", value="48 млн ₽")]),
+        ContentSlide(id="s2", intent="timeline", title="План на 12 складов",
+                     items=[Item(head="Группа 1", text="Внедрение на первых 4 складах"), Item(head="Q3 2026", text="Старт")]),
+    ])
+    bad = unsupported(c, brief)
+    assert "s1" not in bad                      # числа брифа, «в 3 раза» из 4,5→1,5 и нумерация шагов — законны
+    assert any("4 складах" in t for t in bad["s2"]) and any("2026" in t for t in bad["s2"])
+
+
+def test_stylistic_rewrite_is_not_a_typo(tmp_path):
+    ans = {"q8": {"ok": False}, "typos": [{"wrong": "как звали маму", "right": "как звали свою мать"}]}
+    assert not _audit(ans, "Они помнят, как звали маму", tmp_path=tmp_path)

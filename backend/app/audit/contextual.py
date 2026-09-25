@@ -33,6 +33,15 @@ FIX_FOR = {
 }
 
 
+def _is_typo(wrong: str, right: str) -> bool:
+    """Опечатка — правка в пределах одного-двух слов, а не переписанная фраза («маму» → «свою мать»)."""
+    from difflib import SequenceMatcher
+    w, r = wrong.strip(), right.strip()
+    if not r or len(w.split()) > 2 or len(r.split()) > 2:
+        return False
+    return SequenceMatcher(None, w.casefold(), r.casefold()).ratio() >= 0.6
+
+
 def slide_text(lay: SlideLayout) -> str:
     parts = [f"[{s.role}] {s.text}" for s in lay.slots if s.text and s.role not in ("pagenum",)]
     for e in lay.elements:
@@ -91,7 +100,8 @@ async def audit_slides(layouts: list[SlideLayout], pngs: list[Path], kinds: list
                 # VLM иногда «находит» опечатку, которой нет: слово должно быть в тексте и отличаться от исправления
                 pairs = [t for t in (res.get("typos") or []) if isinstance(t, dict)
                          and str(t.get("wrong") or "").strip() and str(t.get("wrong")).casefold() in text
-                         and str(t.get("wrong")).strip().casefold() != str(t.get("right") or "").strip().casefold()]
+                         and str(t.get("wrong")).strip().casefold() != str(t.get("right") or "").strip().casefold()
+                         and _is_typo(str(t["wrong"]), str(t.get("right") or ""))]
                 if not pairs:
                     continue
                 res["typos"] = pairs

@@ -324,20 +324,33 @@ def build_editable(src: Path, out: Path, d: RasterDesign) -> Path:
     title_pt = max(20.0, min(40.0, ts.size_frac * Hpt / 0.85))
     body_pt = max(11.0, min(18.0, d.body_frac * Hpt / 0.85))
     sub_pt = max(10.0, min(title_pt * 0.6, (d.subtitle.size_frac * Hpt / 0.85) if d.subtitle else body_pt * 0.85))
-    sub_col = d.subtitle.color if d.subtitle else d.body_color
+    # цвета, снятые с картинок, бывают ниже нормы WCAG (сиреневый на фиолетовом): доводим до читаемых,
+    # сохраняя оттенок — смешиваем с белым (тёмный фон) или чёрным (светлый)
+    # худший случай градиента: самый светлый (на тёмном фоне) или самый тёмный (на светлом) участок
+    px = d.bg_content[::40, ::40].reshape(-1, 3)
+    lum = px.mean(1)
+    bg_hex = rgb_to_hex(px[lum.argmax()] if d.dark else px[lum.argmin()])
+    sub_col = _readable(d.subtitle.color if d.subtitle else d.body_color, bg_hex)
+    d.body_color = _readable(d.body_color, bg_hex)
+    if d.title:
+        d.title.color = _readable(d.title.color, bg_hex, 3.0)
     margin = int(0.06 * W)
 
     def bg(slide, arr):
         slide.shapes.add_picture(_png(arr), 0, 0, W, H)
 
-    def title_box(slide, spec: TextSpec, text: str, size: float, sub: Optional[str] = None):
-        line = size * 1.25 * 12700
+    def title_box(slide, spec: TextSpec, text: str, size: float, sub: Optional[str] = None, lines: int = 1):
+        # высота строки — по метрикам выбранного шрифта (у Manrope ~1.37 кегля), иначе подгонка
+        # сочтёт, что строка не влезает, и уменьшит заголовок до следующего кегля шкалы
+        line = size * (fonts.line_height_factor(font) + 0.1) * 12700
         if spec.align == "ctr":
             x, w = margin, W - 2 * margin
         else:
             x, w = int(spec.x * W), int(W * 0.94) - int(spec.x * W)
         y = int(spec.y * H - 0.18 * line)
-        _text(slide, x, y, w, int(line * 1.02), text, font, size, spec.color, bold=True, align=spec.align)
+        # многострочная рамка растёт вверх (выравнивание по низу): последняя строка — на месте исходной
+        _text(slide, x, y - int(line * (lines - 1)), w, int(line * (lines + 0.02)), text, font, size, spec.color,
+              bold=True, align=spec.align, anchor="b" if lines > 1 else "t")
         if sub:
             _text(slide, x, y + int(line * 1.05), w, int(sub_pt * 1.4 * 12700), sub, font, sub_pt, sub_col,
                   align=spec.align)
@@ -349,7 +362,7 @@ def build_editable(src: Path, out: Path, d: RasterDesign) -> Path:
     tsl = d.title_slide or TextSpec(0.06, 0.4, 0.5, 0.1, 0.1, fg, "l")
     big = max(title_pt * 1.4, min(60.0, tsl.size_frac * Hpt / 0.85))
     tw = TextSpec(tsl.x, tsl.y, max(tsl.w, 0.45), tsl.h, tsl.size_frac, tsl.color, tsl.align)
-    y_end = title_box(s, tw, "Название презентации", big)
+    y_end = title_box(s, tw, "Название презентации", big, lines=2)
     sub_spec = d.subtitle_slide
     _text(s, int(tw.x * W) if tw.align == "l" else margin, int(y_end + 0.02 * H),
           int(W * 0.5) if tw.align == "l" else W - 2 * margin, int(0.12 * H), "Подзаголовок презентации", font,
@@ -409,6 +422,17 @@ def build_editable(src: Path, out: Path, d: RasterDesign) -> Path:
     title_box(s, fin, "Спасибо за внимание", min(54.0, title_pt * 1.6), "Контакты и вопросы")
     prs.save(str(out))
     return out
+
+
+def _readable(col: str, bg: str, need: float = 4.5) -> str:
+    from .ooxml import contrast, hex_to_rgb
+    target = np.array([255.0, 255, 255]) if luminance(bg) < 0.4 else np.zeros(3)
+    c = np.array(hex_to_rgb(col), dtype=float)
+    for t in np.linspace(0, 1, 21):
+        cand = rgb_to_hex(c + (target - c) * t)
+        if contrast(cand, bg) >= need:
+            return cand
+    return rgb_to_hex(target)
 
 
 def _contrast_ok(fg: str, bg: str) -> bool:

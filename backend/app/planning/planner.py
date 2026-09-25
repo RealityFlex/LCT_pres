@@ -19,6 +19,8 @@ ARCS = {
     "проект": "контекст → цели → подход и этапы → результаты → экономический эффект → риски → следующие шаги",
     "инициатива": "проблема → предложение → выгоды → ресурсы и бюджет → план реализации → риски → запрос на решение",
     "обучение": "цели занятия → теоретические блоки → примеры → практика → типичные ошибки → итоги",
+    # доклад, объяснение, мнение — без бизнес-разделов «бюджет/риски», которых в такой теме нет
+    "другое": "главный вопрос или тезис → контекст → 3–4 ключевые идеи с аргументами → примеры → неочевидный вывод → итоги",
 }
 
 
@@ -180,7 +182,7 @@ async def plan_deck(brief: Brief, profile: TemplateProfile, run: SkillRun) -> De
         + (f" и #{profile.palette.accents[0]}" if profile.palette.accents else "") + ", мягкий свет, без текста")
     target = n or 12
     max_sections = 0 if not profile.narrative.has_sections else (3 if target >= 13 else 2 if target >= 9 else 0)
-    purpose_key = next((k for k in ARCS if k in (brief.purpose or "").lower()), "проект")
+    purpose_key = next((k for k in ARCS if k in (brief.purpose or "").lower()), "другое")
     raw = await run.call(
         "deck_planner", language="русский" if brief.language == "ru" else brief.language, slide_rule=slide_rule,
         arc=ARCS[purpose_key], max_sections=max_sections,
