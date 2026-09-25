@@ -75,6 +75,7 @@ class SlideLayout(BaseModel):
     content_id: str
     canvas: str
     recipe: str
+    intent: str = ""                  # намерение слайда из плана (agenda, cards, …) — рецепт его не всегда выдаёт
     slots: list[SlotFill] = Field(default_factory=list)
     remove_sids: list[str] = Field(default_factory=list)
     label_width: Optional[int] = None

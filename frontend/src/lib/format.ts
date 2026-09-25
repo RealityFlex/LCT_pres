@@ -43,6 +43,10 @@ export const RECIPES: Record<string, string> = {
   image_text: "Картинка и текст",
 };
 
+/** Подпись рецепта; «pattern:cards» — композиция, взятая из самого шаблона. */
+export const recipeLabel = (r: string) =>
+  r.startsWith("pattern:") ? `Паттерн шаблона · ${(RECIPES[r.slice(8)] ?? r.slice(8)).toLowerCase()}` : RECIPES[r] ?? r;
+
 export const INTENTS: Record<string, string> = {
   title: "Титул",
   agenda: "План",

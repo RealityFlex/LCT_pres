@@ -213,7 +213,7 @@ class Composer:
         if spec.recipe == "pattern" and canvas.kind != "pattern":
             spec = spec.model_copy(update={"recipe": spec.opts.get("fallback", "cards")})
         look = Look(self.p, canvas)
-        lay = SlideLayout(index=index, content_id=spec.slide.id, canvas=canvas.id, recipe=spec.recipe,
+        lay = SlideLayout(index=index, content_id=spec.slide.id, canvas=canvas.id, recipe=spec.recipe, intent=spec.slide.intent,
                           notes=spec.slide.notes)
         cb = self.fill_slots(spec, canvas, look, lay, index, deck_title, extras)
         if canvas.kind == "pattern":

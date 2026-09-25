@@ -50,7 +50,7 @@ export default function System() {
         <Stat icon={<Icon24RobotOutline />} title="Языковая модель" value={h?.llm.model.split("/").slice(-2).join("/") ?? "—"} ok={h ? h.llm.configured : null} sub="сценарий, сокращение, исправления" />
         <Stat icon={<Icon24ScanViewfinderOutline />} title="VLM для аудита" value={h?.llm.vision.split("/").slice(-2).join("/") ?? "—"} ok={h ? h.llm.configured : null} sub="смысловые проверки по картинке слайда" />
         <Stat icon={<Icon24PictureOutline />} title="Иллюстрации" value={h?.images.provider ?? "—"} ok={h ? h.images.enabled : null} sub={h?.images.enabled ? "генерация включена" : "нет ключа — слайды без картинок"} />
-        <Stat icon={<Icon24ComputerOutline />} title="Рендер" value={h?.soffice.split(/[\\/]/).slice(-3).join("/") ?? "—"} ok={h ? !h.soffice.startsWith("not") : null} sub={`бюджет колоды: ${h?.deadline_s ?? 300} с`} />
+        <Stat icon={<Icon24ComputerOutline />} title="Рендер" value={h ? (h.soffice.startsWith("not") ? "не найден" : /libreoffice/i.test(h.soffice) ? "LibreOffice" : (h.soffice.split(/[\\/]/).pop() ?? h.soffice)) : "—"} ok={h ? !h.soffice.startsWith("not") : null} sub={`бюджет колоды: ${h?.deadline_s ?? 300} с`} />
       </div>
 
       <section className="mt-14">
@@ -93,9 +93,10 @@ export default function System() {
       <section className="mt-14">
         <SectionHead eyebrow="Аудит" title={`${nDet} детерминированных и ${nVlm} контекстных проверок`}
           action={<Segmented size="sm" value={kind} onChange={setKind} options={[{ value: "all", label: "Все" }, { value: "det", label: "Детерм." }, { value: "vlm", label: "VLM" }]} />} />
-        <div className="grid gap-4 lg:grid-cols-2">
+        {/* колонки-«кладка»: блоки разной высоты без пустот */}
+        <div className="gap-4 lg:columns-2">
           {Object.entries(groups).map(([cat, cs]) => (
-            <Panel key={cat} className="p-5">
+            <Panel key={cat} className="mb-4 break-inside-avoid p-5">
               <div className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-fg-4">{checks.data?.categories[cat] ?? cat}</div>
               <div className="space-y-3">
                 {cs.map((c) => (

@@ -103,6 +103,7 @@ def parse_template(src: Path, name: Optional[str] = None, progress: Progress = N
         an = TemplateAnalyzer(tpl)
         slides = an.run()
         used = sorted({p.style.font for sa in slides for s in sa.shapes for p in s.paras if p.style.font})
+        fonts_found = {}   # шрифты исходника (тема) в картинках не используются — показываем шрифты заменителя
         for f in used:
             fonts_found.setdefault(f, fonts.font_available(f) or fonts.try_fetch_google_font(f))
         fonts.stage_fonts_for_render(list(fonts_found))

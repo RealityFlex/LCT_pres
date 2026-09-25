@@ -89,6 +89,12 @@ class JobStore:
         p = job_dir(jid) / "job.json"
         if p.exists():
             job = JobState.model_validate_json(p.read_text(encoding="utf-8"))
+            if job.status in ("queued", "running"):
+                # задача с диска, но не из этого процесса: сервер перезапускался посреди генерации
+                job.status = "error"
+                job.error = "Генерация прервана: сервер был перезапущен. Запустите её заново."
+                job.finished = job.finished or time.time()
+                self.save(job)
             self.jobs[jid] = job
             return job
         return None
@@ -254,7 +260,7 @@ def slide_kinds(profile: TemplateProfile, layouts: list[SlideLayout]) -> list[st
     out = []
     for lay in layouts:
         c = profile.canvas(lay.canvas)
-        if lay.recipe in ("agenda",):
+        if lay.recipe in ("agenda",) or lay.intent == "agenda":
             out.append("agenda")
         elif lay.recipe in ("section_synth", "section"):
             out.append("section")
@@ -437,6 +443,7 @@ async def run_job(job: JobState, content_override: Optional[DeckContent] = None)
 async def fix_variant(job: JobState, vid: str, issue_ids: list[str]) -> dict:
     """Применяет выбранные исправления, пересобирает вариант и повторно проверяет изменённые слайды."""
     from .audit.fixes import apply_fixes
+    t0 = time.time()
     profile = load_profile(job.template_id)
     jd = job_dir(job.id)
     content = DeckContent.model_validate_json((jd / "content.json").read_text(encoding="utf-8"))
@@ -472,7 +479,8 @@ async def fix_variant(job: JobState, vid: str, issue_ids: list[str]) -> dict:
             iss.id = f"{iss.check}-{iss.slide}-r{vs.revision}"
         new_ctx = ctx
     rep = AuditReport(variant=vid, issues=det_issues + keep_ctx + new_ctx, checks_run=report.checks_run,
-                      stats={"revision": vs.revision, "fixed": len(chosen), "log": log_lines})
+                      stats={"revision": vs.revision, "fixed": len(chosen), "log": log_lines},
+                      seconds=round(time.time() - t0, 1))
     save_variant(vdir, plan, layouts, rep)
     await asyncio.to_thread(export_html, vdir, files, layouts, content.title)
     vs.audit = rep.summary()

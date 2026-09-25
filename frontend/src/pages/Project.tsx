@@ -194,7 +194,7 @@ function ResultView({ job }: { job: Job }) {
   return (
     <>
       {/* ------------------------------------------ варианты и действия */}
-      <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-stretch">
+      <div className="mb-5 flex flex-col gap-4 2xl:flex-row 2xl:items-stretch">
         <div className="grid flex-1 gap-3 sm:grid-cols-3">
           {job.variants.map((x) => {
             const on = x.id === vid;
@@ -206,7 +206,7 @@ function ResultView({ job }: { job: Job }) {
                   on ? "bg-[linear-gradient(135deg,var(--brand),var(--purple))] text-white" : "bg-[color-mix(in_srgb,var(--text)_7%,transparent)] text-fg-2")}>{x.id}</span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[15px] font-semibold">{x.name}</div>
-                  <div className="truncate text-[12px] text-fg-3">{slidesWord(x.n_slides)} · {x.description.split(",")[0]}</div>
+                  <div className="line-clamp-2 text-[12px] leading-snug text-fg-3">{slidesWord(x.n_slides)} · {x.description.split(",")[0]}</div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   {(x.audit.error ?? 0) > 0 ? <Badge tone="bad" dot>{x.audit.error}</Badge> : <Badge tone="ok" dot>0</Badge>}
@@ -216,12 +216,13 @@ function ResultView({ job }: { job: Job }) {
             );
           })}
         </div>
-        <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap">
+        <div className="flex flex-wrap items-center gap-2 2xl:flex-nowrap">
           <Button variant="primary" glow onClick={() => dl("pptx")} icon={<Icon24DownloadOutline width={20} height={20} />}>PPTX</Button>
           <Button variant="outline" onClick={() => dl("pdf")}>PDF</Button>
           <Button variant="outline" onClick={() => window.open(downloadUrl(job.id, vid, "html", true), "_blank", "noopener")} iconRight={<Icon24ExternalLinkOutline width={16} height={16} />}>HTML</Button>
-          <Button variant="ghost" onClick={() => setCompare(true)} icon={<Icon24SquareGrid3x3 width={20} height={20} />} title="Сравнить варианты" />
-          <Button variant="ghost" onClick={() => setPresent(true)} icon={<Icon24Fullscreen width={20} height={20} />} title="Показ" />
+          <Button variant="ghost" className="max-sm:!hidden" onClick={() => setCompare(true)} icon={<Icon24SquareGrid3x3 width={20} height={20} />} title="Сравнить варианты" />
+          {/* на телефоне «Показ» есть под слайдом — здесь убираем, чтобы панель умещалась в строку */}
+          <Button variant="ghost" className="max-sm:!hidden" onClick={() => setPresent(true)} icon={<Icon24Fullscreen width={20} height={20} />} title="Показ" />
           <div className="relative">
             <Button variant="ghost" onClick={() => setMenu((m) => !m)} icon={<Icon24MoreHorizontal width={20} height={20} />} title="Ещё" />
             <AnimatePresence>

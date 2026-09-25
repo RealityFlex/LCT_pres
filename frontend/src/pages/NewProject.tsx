@@ -117,7 +117,7 @@ export default function NewProject() {
   const estSlides = manual ? brief.slide_count ?? 12 : Math.max(11, Math.min(14, 11 + Math.floor((nums + brief.details.split("\n").filter(Boolean).length) / 6)));
 
   return (
-    <div className="mx-auto max-w-[1360px] px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+    <div className="mx-auto max-w-[1360px] px-4 py-6 max-lg:pb-24 sm:px-6 lg:px-10 lg:py-10">
       <div className="mb-8">
         <div className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Новая презентация</div>
         <h1 className="font-display text-[30px] font-semibold leading-tight tracking-tight sm:text-[40px]">
@@ -287,13 +287,22 @@ export default function NewProject() {
                 icon={<Icon24MagicWandOutline width={22} height={22} />}>
                 Сгенерировать 3 варианта
               </Button>
-              <div className="flex items-center justify-center gap-1.5 text-[12px] text-fg-4">
+              <div className="hidden items-center justify-center gap-1.5 text-[12px] text-fg-4 lg:flex">
                 <Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd>
               </div>
             </div>
           </Panel>
         </div>
       </div>
+      {/* телефон: кнопка запуска всегда под рукой над нижней навигацией, не нужно листать до конца */}
+      {ready && (
+        <div className="fixed inset-x-4 z-30 lg:hidden" style={{ bottom: "calc(80px + env(safe-area-inset-bottom))" }}>
+          <Button variant="primary" size="lg" glow className="w-full" loading={create.isPending} onClick={submit}
+            icon={<Icon24MagicWandOutline width={22} height={22} />}>
+            Сгенерировать 3 варианта
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

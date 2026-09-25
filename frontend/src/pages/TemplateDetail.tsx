@@ -92,7 +92,7 @@ export default function TemplateDetail() {
       {/* ------------------------------------------ шапка */}
       <div className="grid gap-6 lg:grid-cols-[1.25fr_1fr]">
         <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}
-          className="overflow-hidden rounded-[22px] shadow-[var(--shadow-2)] ring-1 ring-[var(--line)]">
+          className="self-start overflow-hidden rounded-[22px] shadow-[var(--shadow-2)] ring-1 ring-[var(--line)]">
           <img src={withW(t.cover, 1200)} alt="" className="w-full" style={{ aspectRatio: `${t.slide_w}/${t.slide_h}`, objectFit: "cover" }} />
         </motion.div>
         <div className="flex flex-col">

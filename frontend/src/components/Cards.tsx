@@ -75,7 +75,7 @@ export function ProjectCard({ j }: { j: JobCard }) {
         )}
         <div className="absolute left-3 top-3 flex gap-1.5">
           {running && <Badge tone="accent" className="!bg-black/55 !text-white backdrop-blur"><LiveDot color="#5A9EFF" /> {Math.round(j.progress * 100)}%</Badge>}
-          {j.status === "error" && <Badge tone="bad" className="!bg-black/55 backdrop-blur">ошибка</Badge>}
+          {j.status === "error" && <Badge tone="bad" className="!bg-[var(--red)] !text-white">ошибка</Badge>}
         </div>
         {j.variants.length > 0 && (
           <div className="absolute bottom-3 right-3 flex gap-1">

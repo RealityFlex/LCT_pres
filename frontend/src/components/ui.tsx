@@ -277,8 +277,8 @@ export function Empty({ icon, title, text, action }: { icon: ReactNode; title: s
 
 export function SectionHead({ eyebrow, title, action, className }: { eyebrow?: string; title: ReactNode; action?: ReactNode; className?: string }) {
   return (
-    <div className={clsx("mb-5 flex items-end justify-between gap-4", className)}>
-      <div>
+    <div className={clsx("mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3", className)}>
+      <div className="min-w-0">
         {eyebrow && <div className="mb-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">{eyebrow}</div>}
         <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h2>
       </div>
