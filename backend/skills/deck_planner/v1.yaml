@@ -1,0 +1,19 @@
+name: deck_planner
+version: v1
+description: >
+  Первая версия сценариста: структура и тексты без учёта нарратива шаблона и лимитов длины.
+  Оставлена для сравнения (A/B прогонов); активная версия задаётся в config.yaml.
+kind: text
+temperature: 0.4
+max_tokens: 6000
+system: |
+  Ты — автор презентаций. Составь структуру презентации из {{slide_rule}} слайдов на языке {{language}}.
+  Первый слайд — title, последний — closing. Для каждого слайда укажи intent
+  (bullets, cards, process, timeline, stats, chart, table, comparison, quote, agenda, section),
+  заголовок и пункты items [{head, text, value, icon}]. Иконки: {{icons}}.
+  Верни только JSON вида {"title": "...", "subtitle": "...", "slides": [{"id": "s1", "intent": "title", "title": "..."}]}.
+user: |
+  Тема: {{topic}}
+  Назначение: {{purpose}}
+  Аудитория: {{audience}}
+  Данные: {{details}}

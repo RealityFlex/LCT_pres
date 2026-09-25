@@ -1,0 +1,70 @@
+# Главный конфиг сервиса. Всё, что влияет на воспроизводимость прогона, живёт здесь.
+# Секреты (ключи API) — только в .env.
+
+llm:
+  provider: openai_compatible
+  base_url: https://ai.api.cloud.yandex.net/v1
+  # {folder} подставляется из LLM_FOLDER_ID
+  text_model: gpt://{folder}/qwen3.6-35b-a3b/latest
+  vision_model: gpt://{folder}/qwen3.6-35b-a3b/latest
+  fallback_model: gpt://{folder}/gpt-oss-20b/latest
+  temperature: 0.3
+  timeout_s: 90
+  max_concurrency: 8
+  disable_thinking: true
+
+images:
+  provider: gigachat          # gigachat | none
+  model: GigaChat
+  max_per_deck: 4
+  timeout_s: 90
+
+render:
+  soffice_path: null           # null = автопоиск
+  max_parallel: 3
+  preview_dpi: 110
+
+pipeline:
+  default_slide_count: auto    # auto | число
+  min_slides: 8
+  max_slides: 16
+  deadline_s: 300
+  contextual_audit: true
+
+# Три варианта вёрстки. Ось различий — «плотность и способ визуализации»
+# (обоснование — docs/ARCHITECTURE.md, раздел «Три варианта»).
+variants:
+  - id: A
+    name: Классический
+    strategy: faithful
+    description: Максимальная близость к шаблону, сбалансированная плотность, паттерны из примеров шаблона.
+  - id: B
+    name: Визуальный
+    strategy: visual
+    description: Меньше текста, больше визуализации — крупные цифры, диаграммы, иконки, изображения.
+  - id: C
+    name: Компактный
+    strategy: dense
+    description: Меньше слайдов, больше фактов на слайде — таблицы, сравнения, двухколоночные макеты.
+
+audit:
+  max_bullets: 6
+  max_words_per_bullet: 15
+  max_table_rows: 7
+  max_table_cols: 5
+  max_chart_series: 5
+  min_fill_ratio: 0.25
+  max_fill_ratio: 0.75
+  min_contrast: 4.5
+  max_font_families: 2
+
+# Активные версии скиллов/агентов (промптов). Файлы: backend/skills/<name>/<version>.yaml
+skills:
+  template_analyst: v1
+  narrative_analyst: v1
+  deck_planner: v3
+  text_condenser: v1
+  slide_auditor: v1
+  deck_auditor: v2
+  fixer: v1
+  image_prompter: v1

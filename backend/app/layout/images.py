@@ -1,0 +1,108 @@
+"""Генерация иллюстраций (GigaChat → Kandinsky) с кэшем по хэшу промпта."""
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import logging
+import re
+import time
+import uuid
+from pathlib import Path
+from typing import Optional
+
+import httpx
+
+from ..config import get_settings
+
+log = logging.getLogger("images")
+
+OAUTH = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
+API = "https://gigachat.devices.sberbank.ru/api/v1"
+
+
+class ImageGenError(RuntimeError):
+    pass
+
+
+class GigaChatImages:
+    def __init__(self):
+        s = get_settings()
+        self.key = s.gigachat_key
+        self.scope = s.gigachat_scope
+        self.model = s.images.get("model", "GigaChat")
+        self.timeout = float(s.images.get("timeout_s", 90))
+        self._token: Optional[str] = None
+        self._exp = 0.0
+        self.cache = s.cache_dir / "images"
+        self.cache.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.key) and get_settings().images.get("provider", "gigachat") == "gigachat"
+
+    async def _auth(self, client: httpx.AsyncClient) -> str:
+        if self._token and time.time() < self._exp - 60:
+            return self._token
+        r = await client.post(OAUTH, headers={"Authorization": f"Basic {self.key}", "RqUID": str(uuid.uuid4()),
+                                              "Content-Type": "application/x-www-form-urlencoded",
+                                              "Accept": "application/json"}, data={"scope": self.scope})
+        if r.status_code != 200:
+            raise ImageGenError(f"GigaChat OAuth {r.status_code}: {r.text[:120]}")
+        j = r.json()
+        self._token = j["access_token"]
+        self._exp = j.get("expires_at", time.time() * 1000 + 25 * 60 * 1000) / 1000
+        return self._token
+
+    async def generate(self, prompt: str, style: str = "") -> Path:
+        h = hashlib.sha256((prompt + "|" + style).encode()).hexdigest()[:16]
+        target = self.cache / f"{h}.jpg"
+        if target.exists():
+            return target
+        if not self.enabled:
+            raise ImageGenError("генерация изображений выключена или нет ключа")
+        # сертификаты Минцифры могут отсутствовать в системе — verify отключён только для этого хоста
+        async with httpx.AsyncClient(verify=False, timeout=self.timeout) as client:
+            tok = await self._auth(client)
+            body = {"model": self.model, "function_call": "auto", "messages": [
+                {"role": "system", "content": "Ты — иллюстратор корпоративных презентаций. Рисуешь без текста, букв и логотипов."},
+                {"role": "user", "content": f"Нарисуй: {prompt}. Стиль: {style}. Без текста и надписей, горизонтальный кадр."}]}
+            r = await client.post(f"{API}/chat/completions", json=body, headers={"Authorization": f"Bearer {tok}"})
+            if r.status_code != 200:
+                raise ImageGenError(f"GigaChat {r.status_code}: {r.text[:120]}")
+            content = r.json()["choices"][0]["message"]["content"]
+            m = re.search(r'<img\s+src="([^"]+)"', content)
+            if not m:
+                raise ImageGenError("модель не вернула изображение")
+            img = await client.get(f"{API}/files/{m.group(1)}/content", headers={"Authorization": f"Bearer {tok}",
+                                                                              "Accept": "application/jpg"})
+            if img.status_code != 200 or len(img.content) < 1000:
+                raise ImageGenError("не удалось скачать изображение")
+            target.write_bytes(img.content)
+            return target
+
+
+_gen: Optional[GigaChatImages] = None
+
+
+def image_generator() -> GigaChatImages:
+    global _gen
+    if _gen is None:
+        _gen = GigaChatImages()
+    return _gen
+
+
+async def generate_many(prompts: list[tuple[str, str]], style: str, limit: int) -> dict[str, Path]:
+    """prompts: [(slide_id, prompt)] → {slide_id: path}. Ошибки не роняют пайплайн."""
+    gen = image_generator()
+    out: dict[str, Path] = {}
+    if not gen.enabled:
+        return out
+
+    async def one(sid, pr):
+        try:
+            out[sid] = await gen.generate(pr, style)
+        except Exception as e:
+            log.warning("image %s failed: %s", sid, e)
+
+    await asyncio.gather(*(one(s, p) for s, p in prompts[:limit]))
+    return out

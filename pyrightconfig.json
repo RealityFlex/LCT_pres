@@ -1,0 +1,11 @@
+{
+  "include": ["backend"],
+  "executionEnvironments": [{ "root": "backend" }],
+  "typeCheckingMode": "basic",
+  "reportAttributeAccessIssue": "none",
+  "reportOptionalMemberAccess": "none",
+  "reportArgumentType": "none",
+  "reportGeneralTypeIssues": "none",
+  "reportOperatorIssue": "none",
+  "reportCallIssue": "none"
+}
