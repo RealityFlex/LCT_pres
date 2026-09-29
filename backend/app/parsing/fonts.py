@@ -11,6 +11,7 @@ import os
 import re
 import struct
 import sys
+import logging
 import threading
 import zipfile
 from functools import lru_cache
@@ -22,6 +23,7 @@ from PIL import ImageFont
 from ..config import BACKEND, get_settings
 
 _lock = threading.Lock()
+log = logging.getLogger("fonts")
 
 
 def extracted_fonts_dir() -> Path:
@@ -399,7 +401,11 @@ def normalize_for_renderer(path: Path) -> Optional[Path]:
     os2.fsSelection = (os2.fsSelection & ~0b1100001) | (0b100000 if bold else 0) | (0b1 if italic else 0) | (0 if (bold or italic) else 0b1000000)
     out = extracted_fonts_dir() / f"{ps}-render.ttf"
     try:
-        t.save(str(out))
+        if not out.exists():        # уже зарегистрированный шрифт Windows держит открытым — не перезаписываем
+            t.save(str(out))
+    except OSError as e:
+        log.warning("font normalize %s: %s", path.name, e)
+        return out if out.exists() else None
     finally:
         t.close()
     return out
@@ -425,4 +431,7 @@ def stage_fonts_for_render(families: list[str]) -> None:
                 except OSError:
                     pass
             if not Path(p).stem.endswith("-render"):
-                normalize_for_renderer(Path(p))
+                try:
+                    normalize_for_renderer(Path(p))
+                except Exception as e:      # шрифт без копии хуже, чем упавший разбор шаблона
+                    log.warning("font normalize %s: %s", p, e)
