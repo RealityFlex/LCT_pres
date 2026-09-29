@@ -214,6 +214,12 @@ def build_variant(content: DeckContent, profile: TemplateProfile, vid: str, name
                                                              rows=[[it.value or f"{i + 1}", it.head, it.text] for i, it in enumerate(s.items)])})
             if recipe == "table" and intent == "comparison" and s.columns:
                 s2 = _comparison_to_table(s)
+            if intent == "stats" and sum(1 for it in s.items if it.value) >= 3:
+                # компактный вариант показывает цифры таблицей: показатель · значение · пояснение
+                recipe = "table"
+                s2 = s.model_copy(update={"table": TableSpec(
+                    columns=["Показатель", "Значение", "Что это значит"],
+                    rows=[[it.head, it.value or "—", it.text] for it in s.items[:6]])})
             if recipe == "rows" and len(s.items) > 6:
                 recipe = "table"
                 s2 = s.model_copy(update={"table": TableSpec(columns=["Пункт", "Описание"], rows=[[it.head, it.text] for it in s.items])})

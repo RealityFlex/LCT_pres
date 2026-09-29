@@ -61,7 +61,7 @@ audit:
 # Активные версии скиллов/агентов (промптов). Файлы: backend/skills/<name>/<version>.yaml
 skills:
   template_analyst: v1        # VLM: стиль, тон, стиль иллюстраций (нарратив считается детерминированно)
-  deck_planner: v6
+  deck_planner: v7
   deck_extender: v1         # добор слайдов до объёма 10–15, если сценарист вернул меньше
   speaker_notes: v1         # текст спикера к слайдам без заметок (под длительность выступления)
   text_condenser: v1

@@ -233,6 +233,10 @@ async def plan_deck(brief: Brief, profile: TemplateProfile, run: SkillRun) -> De
         for sl in deck.slides:
             if sl.intent == "image":
                 sl.intent = "bullets"
+    elif mode == "on":
+        ensure_images(deck, 2)
+    else:
+        ensure_images(deck, 0)
     limit_sections(deck, max_sections)
     if len(deck.slides) < n:
         await extend_deck(deck, n, brief, profile, run)
@@ -240,6 +244,28 @@ async def plan_deck(brief: Brief, profile: TemplateProfile, run: SkillRun) -> De
     deck.target_slides = min(n, len(deck.slides))
     await fill_notes(deck, brief, run)
     return deck
+
+
+def _scene(s: ContentSlide) -> str:
+    """Промпт иллюстрации из смысла слайда, если модель его не написала."""
+    # без перечня подписей: Kandinsky рисует перечисленные слова буквами
+    return _s(f"Метафорическая иллюстрация к мысли: {s.title.lower()}. Только предметы и люди крупным планом, "
+              "никаких надписей, подписей, табличек, схем и экранов с текстом", 400)
+
+
+def ensure_images(deck: DeckContent, minimum: int) -> None:
+    """У слайдов-иллюстраций всегда есть промпт; в режиме «обязательно» таких слайдов не меньше minimum."""
+    for s in deck.slides:
+        if s.intent == "image" and not s.image_prompt:
+            s.image_prompt = _scene(s)
+    have = sum(1 for s in deck.slides if s.intent == "image")
+    body = deck.slides[2:-1]           # не титул, не план и не финал
+    cands = [s for s in body if s.intent in ("cards", "bullets") and 2 <= len(s.items) <= 4
+             and not s.chart and not s.table]
+    step = max(1, len(cands) // max(1, minimum - have)) if minimum > have else 1
+    for s in cands[::step][:max(0, minimum - have)]:
+        s.intent = "image"
+        s.image_prompt = _scene(s)
 
 
 def notes_words(brief: Brief, n: int) -> int:

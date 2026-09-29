@@ -56,11 +56,23 @@ class GigaChatImages:
     @staticmethod
     def _clean(t: str) -> str:
         """Kandinsky буквально рисует «3D», цифры и кавычки из промпта — заменяем их описаниями."""
+        # предложения про цифры, надписи и текст модель рисует буквально (и с ошибками) — убираем их целиком;
+        # запрет на текст и так стоит в самом запросе
+        parts = re.split(r"(?<=[.!?;])\s+", t)
+        t = " ".join(p for p in parts if not re.search(r"(?i)(цифр|числ|букв|надпис|текст|слов|подпис|лозунг|заголов|"
+                                                          r"number|digit|text|letter|word)", p))
+        t = re.sub(r"#[0-9A-Fa-f]{3,8}\b", "", t)   # HEX-коды: «#E8A33D» иначе превращался в «#E8Aобъёмные»
         t = re.sub(r"3[DdДд]-?", "объёмные ", t)
         t = re.sub(r"\([^)]*\)", "", t)   # скобки обычно перечисляют бренды и логотипы
         t = re.sub(r"[«»\"]", "", t)
         t = re.sub(r"\d+([.,]\d+)?\s*%?", "", t)
-        return re.sub(r"\s+", " ", t).strip()
+        # схемы, диаграммы, карты и инфографика у Kandinsky всегда обрастают выдуманными подписями
+        t = re.sub(r"(?i)\b(диаграмм\w*|схем\w*|инфограф\w*|график\w*|карт[аеуыой]\w*|иконк\w*|пиктограм\w*|"
+                   r"интерфейс\w*|экран\w*|надпис\w*|flat design|infographic\w*|diagram\w*|icons?)\b", "", t)
+        # плоский вектор у Kandinsky превращается в инфографику с псевдобуквами — просим объём вместо него
+        t = re.sub(r"(?i)(минималистичн\w*\s+)?векторн\w*|в плоском стиле|плоск\w*", "", t)
+        t = re.sub(r"\s*,\s*(,\s*)+", ", ", t)
+        return re.sub(r"\s+", " ", t).strip(" ,;")
 
     async def generate(self, prompt: str, style: str = "") -> Path:
         prompt, style = self._clean(prompt), self._clean(style)
@@ -75,7 +87,9 @@ class GigaChatImages:
             tok = await self._auth(client)
             body = {"model": self.model, "function_call": "auto", "messages": [
                 {"role": "system", "content": "Ты — иллюстратор корпоративных презентаций. Рисуешь без текста, букв и логотипов."},
-                {"role": "user", "content": f"Нарисуй: {prompt}. Стиль: {style}. Никаких букв, цифр, надписей и логотипов в кадре, горизонтальная композиция."}]}
+                {"role": "user", "content": f"Нарисуй: {prompt}. Стиль: {style}; реалистичная объёмная предметная сцена, мягкий студийный свет, "
+                                            "чистый светлый фон. Никаких букв, цифр, надписей, схем и логотипов в кадре, "
+                                            "горизонтальная композиция."}]}
             for attempt in range(4):
                 r = await client.post(f"{API}/chat/completions", json=body, headers={"Authorization": f"Bearer {tok}"})
                 if r.status_code != 429:
