@@ -328,3 +328,19 @@ def test_materials_extract_text_and_pptx(tmp_path):
         extract("photo.png", b"\x89PNG")
     both = combine([("a.md", "x" * 40_000), ("b.md", "y")])
     assert "a.md" in both and "b.md" not in both and len(both) < 31_000   # общий лимит 30 тыс. знаков
+
+
+def test_empty_image_slide_becomes_quote_and_image_moves():
+    from app.planning.models import ContentSlide, DeckContent, Item
+    from app.planning.planner import ensure_images
+    it = [Item(head="a", text="b"), Item(head="c", text="d")]
+    d = DeckContent(title="t", slides=[
+        ContentSlide(id="s1", intent="title", title="T"), ContentSlide(id="s2", intent="agenda", title="План", items=it),
+        ContentSlide(id="s3", intent="image", title="Пустая картинка", image_prompt="векторный стиль"),
+        ContentSlide(id="s4", intent="cards", title="Карточки", items=it),
+        ContentSlide(id="s5", intent="bullets", title="Тезисы", items=it),
+        ContentSlide(id="s6", intent="closing", title="Итог")])
+    ensure_images(d, 2, "векторный стиль")
+    assert d.slides[2].intent == "quote" and not d.slides[2].image_prompt
+    imgs = [s for s in d.slides if s.intent == "image"]
+    assert len(imgs) == 2 and all(s.items and s.image_prompt for s in imgs)

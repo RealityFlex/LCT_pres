@@ -234,9 +234,9 @@ async def plan_deck(brief: Brief, profile: TemplateProfile, run: SkillRun) -> De
             if sl.intent == "image":
                 sl.intent = "bullets"
     elif mode == "on":
-        ensure_images(deck, 2)
+        ensure_images(deck, 2, image_style)
     else:
-        ensure_images(deck, 0)
+        ensure_images(deck, 0, image_style)
     limit_sections(deck, max_sections)
     if len(deck.slides) < n:
         await extend_deck(deck, n, brief, profile, run)
@@ -253,10 +253,17 @@ def _scene(s: ContentSlide) -> str:
               "никаких надписей, подписей, табличек, схем и экранов с текстом", 400)
 
 
-def ensure_images(deck: DeckContent, minimum: int) -> None:
-    """У слайдов-иллюстраций всегда есть промпт; в режиме «обязательно» таких слайдов не меньше minimum."""
+def ensure_images(deck: DeckContent, minimum: int, style: str = "") -> None:
+    """У слайдов-иллюстраций всегда есть промпт и тезисы; в режиме «обязательно» таких слайдов не меньше minimum."""
     for s in deck.slides:
-        if s.intent == "image" and not s.image_prompt:
+        if s.intent != "image":
+            continue
+        if not s.items and not s.lead:
+            # картинка рядом с пустой колонкой — не слайд; заголовок остаётся ключевой мыслью
+            s.intent, s.quote, s.image_prompt = "quote", s.quote or s.title, ""
+            continue
+        # модель иногда подставляет вместо сцены сам стиль шаблона
+        if not s.image_prompt or (style and s.image_prompt.strip()[:40].lower() == style.strip()[:40].lower()):
             s.image_prompt = _scene(s)
     have = sum(1 for s in deck.slides if s.intent == "image")
     body = deck.slides[2:-1]           # не титул, не план и не финал
