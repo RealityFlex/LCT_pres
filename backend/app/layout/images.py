@@ -61,6 +61,9 @@ class GigaChatImages:
         parts = re.split(r"(?<=[.!?;])\s+", t)
         t = " ".join(p for p in parts if not re.search(r"(?i)(цифр|числ|букв|надпис|текст|слов|подпис|лозунг|заголов|"
                                                           r"number|digit|text|letter|word)", p))
+        # названия брендов и команд (латиница с заглавной) Kandinsky пишет на картинке
+        t = re.sub(r"\b[A-Z][A-Za-z]*[A-Z]?[a-z]*[A-Z][A-Za-z]*\b|\b[A-Z][a-z]+[A-Z]\w*\b|\b(?:VK|RealityFlex|Tech)\b", "", t)
+        t = re.sub(r"(?i)\b(таблиц\w*|дашборд\w*|отч[её]т\w*|документ\w* с \w+)\b", "", t)
         t = re.sub(r"#[0-9A-Fa-f]{3,8}\b", "", t)   # HEX-коды: «#E8A33D» иначе превращался в «#E8Aобъёмные»
         t = re.sub(r"3[DdДд]-?", "объёмные ", t)
         t = re.sub(r"\([^)]*\)", "", t)   # скобки обычно перечисляют бренды и логотипы
