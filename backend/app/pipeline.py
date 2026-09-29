@@ -371,7 +371,10 @@ async def run_job(job: JobState, content_override: Optional[DeckContent] = None)
         prompts = [(sl.id, sl.image_prompt) for sl in content.slides if sl.image_prompt]
         if prompts and image_generator().enabled:
             store.emit(job, "images", f"Генерирую иллюстрации ({len(prompts)}) — GigaChat / Kandinsky", 0.22)
-            style = profile.image_style or f"минималистичная 3D-иллюстрация, фирменные цвета #{profile.palette.primary}, без текста"
+            # описание стиля шаблона («векторная инфографика, иконки, интерфейс») тянет генератор в схемы
+            # с псевдобуквами — ему передаём только фирменные цвета словами
+            from .layout.images import palette_words
+            style = palette_words(profile)
             imgs = await generate_many(prompts, style, int(s.images.get("max_per_deck", 3)))
             for sl in content.slides:
                 if sl.id in imgs:
@@ -500,3 +503,4 @@ async def fix_variant(job: JobState, vid: str, issue_ids: list[str]) -> dict:
     vs.n_slides = len(layouts)
     STORE.save(job)
     return {"revision": vs.revision, "changed": sorted(changed), "log": log_lines, "audit": rep.model_dump()}
+

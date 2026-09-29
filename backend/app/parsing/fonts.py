@@ -363,6 +363,48 @@ def make_static_instances(path: Path) -> list[Path]:
     return res
 
 
+RIBBI = {"regular", "bold", "italic", "bold italic"}
+
+
+def normalize_for_renderer(path: Path) -> Optional[Path]:
+    """Копия шрифта со стандартным начертанием (Regular/Bold/Italic/Bold Italic) для рендера.
+
+    Windows GDI (через него LibreOffice видит шрифты) не собирает семейство, если начертание названо
+    нестандартно — «Normal», «Book», «Medium»: тогда «MiSans» у рендера не существует, обычный текст
+    уходит в Liberation Sans, а жирный — в Arial Black, и вся подгонка текста, сделанная по метрикам
+    настоящего шрифта, разъезжается. Возвращает путь копии или None, если нормализация не нужна."""
+    from fontTools.ttLib import TTFont
+    try:
+        t = TTFont(str(path))
+    except Exception:
+        return None
+    name = t["name"]
+    fam = name.getDebugName(16) or name.getDebugName(1)
+    sub = (name.getDebugName(2) or "").strip()
+    if not fam or sub.lower() in RIBBI:
+        t.close()
+        return None
+    bold = "bold" in sub.lower() or t["OS/2"].usWeightClass >= 600
+    italic = "italic" in sub.lower() or "oblique" in sub.lower()
+    style = ("Bold " if bold else "") + ("Italic" if italic else "") or "Regular"
+    style = style.strip() or "Regular"
+    for rec in list(name.names):
+        if rec.nameID in (1, 2, 4, 6, 16, 17):
+            name.removeNames(nameID=rec.nameID)
+    ps = (fam + "-" + style).replace(" ", "")
+    for nid, val in ((1, fam), (2, style), (4, f"{fam} {style}" if style != "Regular" else fam), (6, ps)):
+        name.setName(val, nid, 3, 1, 0x409)
+        name.setName(val, nid, 1, 0, 0)
+    os2 = t["OS/2"]
+    os2.fsSelection = (os2.fsSelection & ~0b1100001) | (0b100000 if bold else 0) | (0b1 if italic else 0) | (0 if (bold or italic) else 0b1000000)
+    out = extracted_fonts_dir() / f"{ps}-render.ttf"
+    try:
+        t.save(str(out))
+    finally:
+        t.close()
+    return out
+
+
 def stage_fonts_for_render(families: list[str]) -> None:
     """Копирует файлы шрифтов шаблона в data/fonts, чтобы их видел LibreOffice (в т.ч. пользовательские)."""
     import shutil
@@ -377,9 +419,10 @@ def stage_fonts_for_render(families: list[str]) -> None:
                 base = base[:-1]
                 styles = idx.get(" ".join(base))
         for p in (styles or {}).values():
-            if p.lower().startswith(win_fonts) or Path(p).parent == out:
-                continue
-            try:
-                shutil.copy2(p, out / Path(p).name)
-            except OSError:
-                pass
+            if not p.lower().startswith(win_fonts) and Path(p).parent != out:
+                try:
+                    shutil.copy2(p, out / Path(p).name)
+                except OSError:
+                    pass
+            if not Path(p).stem.endswith("-render"):
+                normalize_for_renderer(Path(p))

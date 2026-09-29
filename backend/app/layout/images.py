@@ -138,3 +138,21 @@ async def generate_many(prompts: list[tuple[str, str]], style: str, limit: int) 
     for s, p in prompts[:limit]:   # последовательно: у GigaChat лимит на параллельные запросы
         await one(s, p)
     return out
+
+
+def color_word(hexv: str) -> str:
+    """Название цвета для промпта генератора картинок (HEX он рисует буквами)."""
+    import colorsys
+    r, g, b = (int(hexv[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    h, l, s = colorsys.rgb_to_hls(r, g, b)
+    if s < 0.15:
+        return "белый" if l > 0.85 else "светло-серый" if l > 0.6 else "графитовый" if l > 0.25 else "чёрный"
+    names = [(15, "красный"), (40, "оранжевый"), (65, "жёлтый"), (160, "зелёный"), (195, "бирюзовый"),
+             (250, "синий"), (290, "фиолетовый"), (335, "пурпурный"), (361, "красный")]
+    base = next(n for lim, n in names if h * 360 < lim)
+    return ("тёмно-" if l < 0.3 else "светло-" if l > 0.75 else "") + base
+
+
+def palette_words(profile) -> str:
+    cols = [c for c in [profile.palette.primary] + list(profile.palette.accents)[:2] if c]
+    return "фирменные цвета: " + ", ".join(dict.fromkeys(color_word(c) for c in cols))

@@ -242,8 +242,31 @@ async def plan_deck(brief: Brief, profile: TemplateProfile, run: SkillRun) -> De
         await extend_deck(deck, n, brief, profile, run)
     trim_deck(deck, n if brief.slide_count else MAX_SLIDES)
     deck.target_slides = min(n, len(deck.slides))
+    if max_images:
+        from ..layout.images import palette_words
+        await illustrate(deck, brief, palette_words(profile), run)
     await fill_notes(deck, brief, run)
     return deck
+
+
+async def illustrate(deck: DeckContent, brief: Brief, style: str, run: SkillRun) -> None:
+    """Буквальные сцены по теме колоды и тезисам слайда вместо абстрактных метафор сценариста."""
+    need = [s for s in deck.slides if s.intent == "image"]
+    if not need:
+        return
+    lines = "\n".join(f"{s.id}: {s.title}. " + "; ".join(f"{it.head} — {it.text}" if it.text else it.head
+                                                        for it in s.items[:4]) for s in need)
+    try:
+        raw = await run.call("illustrator", topic=brief.topic, audience=brief.audience or "руководители и команда",
+                             style=style, slides=lines)
+    except Exception as e:      # остаются промпты сценариста
+        log.warning("illustrator failed: %s", e)
+        return
+    got = raw.get("prompts") if isinstance(raw, dict) else None
+    for s in need:
+        p = _s((got or {}).get(s.id), 400)
+        if len(p.split()) >= 5:
+            s.image_prompt = p
 
 
 def _scene(s: ContentSlide) -> str:

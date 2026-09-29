@@ -64,6 +64,7 @@ skills:
   deck_planner: v7
   deck_extender: v1         # добор слайдов до объёма 10–15, если сценарист вернул меньше
   speaker_notes: v1         # текст спикера к слайдам без заметок (под длительность выступления)
+  illustrator: v1           # промпты иллюстраций по теме колоды и тезисам слайда
   text_condenser: v1
   slide_auditor: v1
   deck_auditor: v2
