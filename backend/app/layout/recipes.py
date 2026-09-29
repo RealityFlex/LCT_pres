@@ -294,7 +294,7 @@ class Composer:
         hs_pref = max(look.heading_size, look.snap_up(look.body_size * 1.2))
         num_pref = look.snap_down(min(look.number_size, 36 * look.k * 1.3))
         best = None
-        for hs, bs in look.pairs():
+        for hs, bs in look.pairs(heads=[it.head for it in items], bodies=[it.text for it in items], width=inner_w):
             need = max(self._card_parts_height(look, it, inner_w, hs, bs, icon_h, show_icon, show_num, num_pref)
                        for it in items) + 2 * pad
             if need <= max_ch * 0.92:
@@ -371,7 +371,8 @@ class Composer:
         hs_pref = max(look.heading_size, look.snap_up(look.body_size * 1.2))
         # единый кегль для всех строк
         hs, bs = look.min_size, look.min_size
-        for cand_h, cand_b in look.pairs():
+        for cand_h, cand_b in look.pairs(heads=[it.head or it.text for it in items], bodies=[it.text for it in items if it.head],
+                                         width=head_w - look.gap // 2, body_width=text_w):
             if (all(tf.fits([(it.head or it.text, True)], head_w - look.gap // 2, row_h, look.heading_font, cand_h) for it in items)
                     and all(tf.fits([(it.text, False)], text_w, row_h, look.body_font, cand_b) for it in items if it.text and it.head)):
                 hs, bs = cand_h, cand_b
@@ -418,7 +419,7 @@ class Composer:
         hs_pref = max(look.heading_size, look.snap_up(look.body_size * 1.2))
         best = (look.min_size, look.min_size)
         found = False
-        for hs, bs in look.pairs():
+        for hs, bs in look.pairs(heads=[it.head for it in items], bodies=[it.text for it in items], width=text_w):
             if all(tf.needed_height([(it.head, True)], text_w, look.heading_font, hs) * (1 if it.head else 0)
                    + tf.needed_height([(it.text, False)], text_w, look.body_font, bs) * (1 if it.text else 0)
                    + int(0.15 * g) <= row_h for it in items):
@@ -465,7 +466,7 @@ class Composer:
         label_size = look.snap_down(max(look.min_size, look.body_size * 0.85))
         hs_pref = max(look.heading_size, look.snap_up(look.body_size * 1.15))
         best = None
-        for hs, bs in look.pairs():
+        for hs, bs in look.pairs(heads=[it.head for it in items], bodies=[it.text for it in items], width=inner):
             need = max(tf.needed_height([(it.value or "Шаг 1", True)], inner, look.heading_font, label_size)
                        + (tf.needed_height([(it.head, True)], inner, look.heading_font, hs) if it.head else 0)
                        + (tf.needed_height([(it.text, False)], inner, look.body_font, bs) if it.text else 0)
@@ -545,7 +546,7 @@ class Composer:
         lab_size = look.snap_down(min(look.number_size * 0.55, hs_pref * 1.5))
         below_h = cb.y2 - (line_y + dot + look.gap)
         hs, bs = look.min_size, look.min_size
-        for h_c, b_c in look.pairs():
+        for h_c, b_c in look.pairs(heads=[it.head for it in items], bodies=[it.text for it in items], width=inner):
             if all((tf.needed_height([(it.head, True)], inner, look.heading_font, h_c) if it.head else 0)
                    + (tf.needed_height([(it.text, False)], inner, look.body_font, b_c) if it.text else 0)
                    + int(0.2 * look.gap) <= below_h for it in items):
@@ -587,7 +588,7 @@ class Composer:
         hs_pref = max(look.heading_size, look.snap_up(look.body_size * 1.15))
         rest_h = int(cb.h * 0.8) - num_h - 2 * pad
         hs, bs = look.min_size, look.min_size
-        for h_c, b_c in look.pairs():
+        for h_c, b_c in look.pairs(heads=[it.head for it in items], bodies=[it.text for it in items], width=inner):
             if all((tf.needed_height([(it.head, True)], inner, look.heading_font, h_c) if it.head else 0) + (
                     tf.needed_height([(it.text, False)], inner, look.body_font, b_c) if it.text else 0) <= rest_h
                    for it in items):
@@ -744,7 +745,7 @@ class Composer:
         pad = self.pad(look)
         inner = cw - 2 * pad
         hs, bs = look.min_size, look.min_size
-        for h_c, b_c in look.pairs():
+        for h_c, b_c in look.pairs(heads=[c.title for c in cols], bodies=[pt for c in cols for pt in c.points[:6]], width=inner):
             head_h = tf.needed_height([(max((c.title for c in cols), key=len), True)], inner, look.heading_font, h_c) + 2 * pad
             if all(tf.fits([(pt, False) for pt in c.points[:6]], inner, cb.h - head_h - 2 * pad, look.body_font, b_c,
                            space_after_k=0.45) for c in cols):

@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Iterable, Optional
 
 from ..parsing.model import Canvas, CardStyle, TemplateProfile
 from ..parsing.ooxml import color_distance, contrast, hex_to_rgb, luminance, rgb_to_hex
+from . import textfit as tf
 
 
 def mix(a: str, b: str, k: float) -> str:
@@ -93,13 +94,38 @@ class Look:
         vals = {s for s in self.scale if lo - 1e-6 <= s <= hi + 1e-6}
         return sorted(vals or {self.snap_down(hi)}, reverse=True)
 
-    def pairs(self) -> list[tuple[float, float]]:
-        """Пары (заголовок, текст) от крупных к мелким с сохранением пропорции."""
+    def pairs(self, heads: Iterable[str] = (), bodies: Iterable[str] = (), width: Optional[int] = None,
+              body_width: Optional[int] = None) -> list[tuple[float, float]]:
+        """Пары (заголовок, текст) от крупных к мелким с сохранением пропорции.
+
+        С текстами и шириной (EMU) — только пары, где каждое слово помещается в строку целиком:
+        иначе рендер разорвёт длинное слово («Детерминир-ованный»), хотя по высоте всё влезает."""
         out = []
         for bs in self.sizes_between(self.min_size, self.body_max):
             hs = min(self.heading_max, max(bs, self.snap_up(bs * 1.22)))
             out.append((hs, bs))
-        return out
+        if not width:
+            return out
+        head_words = {w for t in heads if t for w in t.split()}
+        body_words = {w for t in bodies if t for w in t.split()}
+        # запас 10%: жирное начертание у рендера бывает синтетическим и шире измеренного
+        hw, bw = width * 0.9, (body_width or width) * 0.9
+
+        def head_ok(hs: float) -> bool:
+            return all(tf.text_width(w, self.heading_font, hs, True) <= hw for w in head_words)
+
+        def body_ok(bs: float) -> bool:
+            return all(tf.text_width(w, self.body_font, bs, False) <= bw for w in body_words)
+
+        good = []
+        for hs, bs in out:
+            if not body_ok(bs):
+                continue
+            # длинное слово в заголовке уменьшает только заголовок (не ниже кегля текста), текст сохраняет размер
+            h2 = next((h for h in self.sizes_between(bs, hs) if head_ok(h)), None)
+            if h2 is not None:
+                good.append((h2, bs))
+        return good or out[-1:]
 
     # ---------------------------------------------------------------- cards
     def _card_ok(self, cs: CardStyle) -> bool:

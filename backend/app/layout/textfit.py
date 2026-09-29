@@ -70,7 +70,10 @@ def fit_size(paras: list[tuple[str, bool]], w_emu: int, h_emu: int, font: str, s
 
 def needed_height(paras: list[tuple[str, bool]], w_emu: int, font: str, size: float,
                   line_spacing: float = 1.0, space_after_k: float = 0.0) -> int:
-    return int(block_height(paras, w_emu / EMU_PT, font, size, line_spacing, space_after_k * size) * EMU_PT * 1.05)
+    # тот же запас по ширине, что и в fits(): иначе «впритык» строка у LibreOffice/PowerPoint переносится,
+    # а следующий блок уже поставлен под одну строку и наезжает на неё
+    wpt = w_emu / EMU_PT * 0.97
+    return int(block_height(paras, wpt, font, size, line_spacing, space_after_k * size) * EMU_PT * 1.05)
 
 
 def text_width(text: str, font: str, size: float, bold: bool = False) -> int:
