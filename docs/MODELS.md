@@ -4,7 +4,7 @@
 
 | Роль | Модель | Параметры | Лицензия | Где используется |
 |---|---|---|---|---|
-| Текст (основная) | [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) | 35B всего, ~3B активных (MoE) | [Apache 2.0](https://huggingface.co/Qwen/Qwen3.6-35B-A3B/blob/main/LICENSE) | сценарий (`deck_planner`), сокращение текста (`text_condenser`), исправления (`fixer`), ревью колоды (`deck_auditor`) |
+| Текст (основная) | [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) | 35B всего, ~3B активных (MoE) | [Apache 2.0](https://huggingface.co/Qwen/Qwen3.6-35B-A3B/blob/main/LICENSE) | сценарий (`deck_planner`), добор слайдов до объёма (`deck_extender`), текст спикера (`speaker_notes`), сокращение текста (`text_condenser`), исправления (`fixer`), ревью колоды (`deck_auditor`) |
 | VLM | Qwen3.6-35B-A3B (мультимодальная) | то же | Apache 2.0 | описание стиля шаблона (`template_analyst`), контекстный аудит слайдов по картинке (`slide_auditor`) |
 | Текст (запасная) | [gpt-oss-20b](https://huggingface.co/openai/gpt-oss-20b) | 21B (MoE) | Apache 2.0 | автоматически, если основная модель не ответила или вернула невалидный JSON |
 | Иллюстрации | Kandinsky через GigaChat API ([Kandinsky 3.1](https://huggingface.co/ai-forever/Kandinsky3.1), [Kandinsky 3.0](https://huggingface.co/kandinsky-community/kandinsky-3)) | — | Apache 2.0 (веса Kandinsky 3.x) | генерация иллюстраций в стиле шаблона |
@@ -23,7 +23,7 @@
   - таймауты, повторы и переключение на запасную модель;
   - извлечение и починка JSON из ответа;
   - трасса всех вызовов в `data/jobs/<id>/llm_trace.jsonl`: скилл, версия, хэш промпта, модель, время, токены.
-- **Скиллы** (`backend/skills/<name>/<version>.yaml`): системный и пользовательский промпты с подстановкой `{{переменных}}`, температура, лимит токенов. Активные версии перечислены в `config.yaml → skills`, их список и описания показывает страница «Система».
+- **Скиллы** (`backend/skills/<name>/<version>.yaml`): системный и пользовательский промпты с подстановкой `{{переменных}}`, температура, лимит токенов. Активные версии перечислены в `config.yaml → skills`, их список и описания отдаёт `GET /api/skills`.
 - **Детерминизм прежде модели:**
   - все размеры, цвета, шрифты и геометрия вычисляются без моделей;
   - модели пишут текст, описывают стиль и оценивают смысл.

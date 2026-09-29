@@ -131,6 +131,7 @@ export type Brief = {
   audience: string;
   details: string;
   slide_count: number | null;
+  duration_min: number | null;
   author: string;
   language: string;
   images: "auto" | "on" | "off";
@@ -242,6 +243,8 @@ export type Check = { code: string; title: string; category: string; determinist
 export type Stats = { templates: number; projects: number; done: number; avg_seconds: number | null; slides: number };
 export type Example = Brief & { id: string; title_hint?: string };
 
+export type Material = { name: string; chars?: number; text?: string; error?: string };
+
 export type FixResult = { revision: number; changed: number[]; log: string[]; audit: AuditReport };
 
 // ------------------------------------------------------------------ методы
@@ -264,8 +267,16 @@ export const api = {
 
   jobs: () => req<JobCard[]>("/api/jobs"),
   job: (id: string) => req<Job>(`/api/jobs/${id}`),
-  createJob: (template_id: string, brief: Brief) =>
-    req<{ id: string }>("/api/jobs", { method: "POST", body: JSON.stringify({ template_id, brief }) }),
+  createJob: (template_id: string, brief: Brief, materials: Material[] = []) =>
+    req<{ id: string }>("/api/jobs", {
+      method: "POST",
+      body: JSON.stringify({ template_id, brief, materials: materials.filter((m) => m.text).map((m) => ({ name: m.name, text: m.text })) }),
+    }),
+  materials: (files: File[]) => {
+    const fd = new FormData();
+    for (const f of files) fd.append("files", f);
+    return req<{ files: Material[]; limit: number }>("/api/materials", { method: "POST", body: fd });
+  },
   deleteJob: (id: string) => req<{ ok: boolean }>(`/api/jobs/${id}`, { method: "DELETE" }),
   rerun: (id: string, template_id?: string, reuse_content = true) =>
     req<{ id: string }>(`/api/jobs/${id}/rerun`, { method: "POST", body: JSON.stringify({ template_id, reuse_content }) }),

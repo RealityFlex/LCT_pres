@@ -5,6 +5,8 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+MIN_SLIDES, MAX_SLIDES = 10, 15       # целевой объём колоды по ТЗ, если пользователь не задал свой
+
 INTENTS = ("title", "agenda", "section", "bullets", "cards", "process", "timeline", "stats", "chart",
            "table", "comparison", "quote", "image", "closing")
 
@@ -15,6 +17,7 @@ class Brief(BaseModel):
     audience: str = ""
     details: str = ""                # дополнительные данные (факты, цифры)
     slide_count: Optional[int] = None
+    duration_min: Optional[int] = None  # длительность выступления, мин: объём колоды и заметок спикера
     author: str = ""
     language: str = "ru"
     images: str = "auto"             # auto — где уместно | on — обязательно 2–3 иллюстрации | off — без картинок
@@ -75,6 +78,7 @@ class DeckContent(BaseModel):
     language: str = "ru"
     slides: list[ContentSlide] = Field(default_factory=list)
     facts: list[str] = Field(default_factory=list)   # факты/цифры из брифа (для проверки «цифры из источника»)
+    target_slides: int = 0      # объём, который обязан держать каждый вариант (10–15 по ТЗ или заданный пользователем)
 
 
 class SlideSpec(BaseModel):

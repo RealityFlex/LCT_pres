@@ -223,9 +223,15 @@ def template_canvas(tid: str, cid: str, w: Optional[int] = None):
 
 # ------------------------------------------------------------------ jobs
 
+class Material(BaseModel):
+    name: str
+    text: str
+
+
 class JobIn(BaseModel):
     template_id: str
     brief: Brief
+    materials: list[Material] = []      # текст приложенных файлов (см. /api/materials)
 
 
 @app.post("/api/jobs")
@@ -234,9 +240,29 @@ async def create_job(body: JobIn):
         raise HTTPException(404, "шаблон не найден")
     if not body.brief.topic.strip():
         raise HTTPException(400, "Опишите тему презентации")
+    if body.materials:
+        from ..planning.materials import combine
+        mats = combine([(m.name, m.text) for m in body.materials if m.text.strip()])
+        body.brief.details = (body.brief.details.strip() + "\n\nПРИЛОЖЕННЫЕ МАТЕРИАЛЫ\n" + mats).strip()
     job = STORE.create(body.template_id, body.brief)
     _spawn(run_job(job))
     return {"id": job.id}
+
+
+@app.post("/api/materials")
+async def materials(files: list[UploadFile] = File(...)):
+    """Текст из приложенных к брифу файлов (README, документация, отчёты, старые презентации)."""
+    from ..planning.materials import MAX_TOTAL_CHARS, extract
+    out = []
+    for f in files[:10]:
+        data = await f.read()
+        name = f.filename or "файл"
+        try:
+            text = await asyncio.to_thread(extract, name, data)
+            out.append({"name": name, "chars": len(text), "text": text})
+        except Exception as e:      # один битый файл не должен отменять остальные
+            out.append({"name": name, "error": str(e)[:200]})
+    return {"files": out, "limit": MAX_TOTAL_CHARS}
 
 
 @app.get("/api/jobs")

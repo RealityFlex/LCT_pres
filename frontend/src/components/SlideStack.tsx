@@ -3,13 +3,12 @@ import { AnimatePresence, motion, useMotionValue, useSpring, useTransform, type 
 import { useEffect, useState } from "react";
 
 const CHIPS = [
-  "Контраст 4,8 : 1",
-  "Кегль из шкалы шаблона",
-  "Цвета из палитры",
+  "Цвета компании",
+  "Шрифты шаблона",
   "Логотип на месте",
-  "PPTX — нативные объекты",
-  "Заголовок — вывод",
-  "Цифры есть в брифе",
+  "Редактируемый PPTX",
+  "Текст читается",
+  "Цифры из брифа",
 ];
 
 function FakeSlide({ tone }: { tone: number }) {

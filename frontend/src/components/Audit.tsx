@@ -50,7 +50,7 @@ export function AuditSummary({ report }: { report: AuditReport | null }) {
       </svg>
       <div className="min-w-0">
         <div className="font-display text-[26px] font-semibold leading-none">{is.length}</div>
-        <div className="mt-1 text-[12px] text-fg-3">замечаний · {det} детерм. · {is.length - det} VLM</div>
+        <div className="mt-1 text-[12px] text-fg-3">замечаний · {det} по оформлению · {is.length - det} по смыслу</div>
         <div className="mt-2 flex flex-wrap gap-1.5">
           <Badge tone="bad" dot>{e}</Badge>
           <Badge tone="warn" dot>{w}</Badge>
@@ -98,8 +98,8 @@ export function AuditPanel({ report, onGoto, onHover, onFix, fixing, className }
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Segmented<Kind> size="sm" value={kind} onChange={setKind} options={[
             { value: "all", label: "Все" },
-            { value: "det", label: "Детерм.", icon: <Icon24ScanViewfinderOutline width={14} height={14} /> },
-            { value: "vlm", label: "VLM", icon: <Icon24RobotOutline width={14} height={14} /> },
+            { value: "det", label: "Оформление", icon: <Icon24ScanViewfinderOutline width={14} height={14} /> },
+            { value: "vlm", label: "Смысл", icon: <Icon24RobotOutline width={14} height={14} /> },
           ]} />
           {(["error", "warning", "info"] as const).map((s) => (
             <button key={s} className="chip !h-7 !px-2.5 !text-[12px]" data-on={sev === s} onClick={() => setSev(sev === s ? null : s)}>
@@ -155,7 +155,7 @@ export function AuditPanel({ report, onGoto, onHover, onFix, fixing, className }
                     </div>
                     <div className="mt-1 line-clamp-3 pl-4 text-[12px] leading-relaxed text-fg-3">{i.message}</div>
                     <div className="mt-2 flex flex-wrap gap-1 pl-4">
-                      <Badge className="!h-5 !text-[10px]" tone={i.deterministic ? "accent" : "purple"}>{i.deterministic ? "детерминированная" : "VLM"}</Badge>
+                      <Badge className="!h-5 !text-[10px]" tone={i.deterministic ? "accent" : "purple"}>{i.deterministic ? "оформление" : "смысл"}</Badge>
                       <Badge className="!h-5 !text-[10px]">{CATEGORY[i.category] ?? i.category}</Badge>
                       {i.fixable && <Badge className="!h-5 !text-[10px]" tone="ok">исправимо</Badge>}
                     </div>

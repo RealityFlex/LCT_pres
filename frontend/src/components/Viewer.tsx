@@ -4,8 +4,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { url, type Issue, type SlideItem } from "../lib/api";
-import { SEVERITY, recipeLabel } from "../lib/format";
-import { Badge, Button, Kbd } from "./ui";
+import { SEVERITY } from "../lib/format";
+import { Button, Kbd } from "./ui";
 
 export function SlideViewer({
   slides, index, onIndex, issues, showIssues, onToggleIssues, hoverIssue, slideW, slideH, busy, onPresent,
@@ -94,11 +94,7 @@ export function SlideViewer({
           <span className="min-w-[76px] text-center font-mono text-[13px] font-semibold">{index} / {slides.length}</span>
           <Button size="sm" variant="ghost" onClick={() => onIndex(Math.min(slides.length, index + 1))} disabled={index >= slides.length} icon={<Icon24ChevronRight width={18} height={18} />} aria-label="Вперёд" />
         </div>
-        {/* метки рецепта и холста не должны переносить кнопки на новую строку */}
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-          <Badge tone="purple" className="shrink-0">{recipeLabel(s.recipe)}</Badge>
-          <span className="hidden min-w-0 lg:block"><Badge className="truncate font-mono">холст {s.canvas}</Badge></span>
-        </div>
+        <div className="flex-1" />
         <Button size="sm" variant={showIssues ? "soft" : "ghost"} onClick={onToggleIssues}
           icon={showIssues ? <Icon24ViewOutline width={18} height={18} /> : <Icon24HideOutline width={18} height={18} />}>
           <span className="hidden sm:inline">Замечания на слайде</span>

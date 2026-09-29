@@ -13,7 +13,6 @@ const Project = lazy(() => import("./pages/Project"));
 const Projects = lazy(() => import("./pages/Projects"));
 const Templates = lazy(() => import("./pages/Templates"));
 const TemplateDetail = lazy(() => import("./pages/TemplateDetail"));
-const System = lazy(() => import("./pages/System"));
 
 const qc = new QueryClient({
   defaultOptions: { queries: { staleTime: 10_000, refetchOnWindowFocus: false, retry: 1 } },
@@ -39,7 +38,6 @@ createRoot(document.getElementById("root")!).render(
                   <Route path="projects" element={<Projects />} />
                   <Route path="templates" element={<Templates />} />
                   <Route path="templates/:id" element={<TemplateDetail />} />
-                  <Route path="system" element={<System />} />
                   <Route path="*" element={<Home />} />
                 </Route>
               </Routes>

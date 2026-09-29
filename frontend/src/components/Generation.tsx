@@ -7,11 +7,11 @@ import { clock, INTENTS } from "../lib/format";
 import { Badge, LiveDot, Panel, Spinner } from "./ui";
 
 const STAGES = [
-  { key: "plan", label: "Сценарий колоды", sub: "LLM пишет структуру, заголовки-выводы и тексты" },
+  { key: "plan", label: "Сценарий колоды", sub: "структура, заголовки и тексты по брифу" },
   { key: "images", label: "Иллюстрации", sub: "генерация картинок для слайдов", optional: true },
-  { key: "compose", label: "Вёрстка трёх вариантов", sub: "рецепты по сетке и шкале кеглей шаблона" },
-  { key: "build", label: "Сборка и рендер", sub: "нативный PPTX → LibreOffice → превью" },
-  { key: "audit", label: "Аудит", sub: "детерминированные проверки и VLM-ревью" },
+  { key: "compose", label: "Вёрстка трёх вариантов", sub: "раскладка по сетке и стилю шаблона" },
+  { key: "build", label: "Сборка и рендер", sub: "редактируемый PPTX и превью" },
+  { key: "audit", label: "Аудит", sub: "проверка каждого слайда" },
   { key: "export", label: "Экспорт", sub: "PPTX · PDF · HTML" },
 ];
 

@@ -105,7 +105,7 @@ export function ProjectCard({ j }: { j: JobCard }) {
   );
 }
 
-const PARSE_STAGES = ["Шрифты шаблона", "Структура слайдов", "Рендер шаблона", "Дизайн-токены", "Холсты", "Разметка слайдов моделью", "Готово"];
+const PARSE_STAGES = ["Шрифты шаблона", "Структура слайдов", "Рендер шаблона", "Дизайн-токены", "Холсты", "Анализ стиля", "Готово"];
 
 export function Dropzone({ onReady, compact }: { onReady: (id: string) => void; compact?: boolean }) {
   const qc = useQueryClient();

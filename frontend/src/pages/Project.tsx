@@ -118,9 +118,6 @@ function Header({ job }: { job: Job }) {
         )}
         <span className="chip"><Icon24DocumentOutline width={14} height={14} /> {job.brief.purpose}</span>
         {secs != null && <span className="chip"><Icon24ClockOutline width={14} height={14} /> {secs} с на три колоды</span>}
-        {job.status === "done" && job.llm_stats?.calls != null && (
-          <span className="chip font-mono !text-[12px]">{job.llm_stats.calls} вызовов LLM</span>
-        )}
       </div>
     </div>
   );

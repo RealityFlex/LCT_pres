@@ -3,7 +3,6 @@ import {
   Icon24AddCircleOutline,
   Icon24ArticlesOutline,
   Icon24DocumentOutline,
-  Icon24GearOutline,
   Icon24HomeOutline,
   Icon24PaletteOutline,
   Icon24SearchOutline,
@@ -41,7 +40,6 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       { id: "home", group: "Разделы", label: "Главная", icon: <Icon24HomeOutline />, run: go("/") },
       { id: "projects", group: "Разделы", label: "Проекты", icon: <Icon24ArticlesOutline />, run: go("/projects") },
       { id: "templates", group: "Разделы", label: "Шаблоны", icon: <Icon24PaletteOutline />, run: go("/templates") },
-      { id: "system", group: "Разделы", label: "Система: модели, скиллы, аудит", icon: <Icon24GearOutline />, run: go("/system") },
     ];
     for (const j of (jobs.data ?? []).slice(0, 12)) {
       base.push({ id: `j-${j.id}`, group: "Проекты", label: j.title, hint: j.template_name, icon: <Icon24DocumentOutline />, run: go(`/project/${j.id}`) });

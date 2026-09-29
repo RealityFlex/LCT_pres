@@ -254,3 +254,77 @@ def test_template_logos_are_not_garbage_and_empty_brief_softens_facts(tmp_path):
                     "q4": {"ok": False, "comment": "Упоминание санкций не подтверждено"}})
     issues, _ = asyncio.run(audit_slides([_layout("Тема")], [png], ["content"], "бриф", run, no_data=True))
     assert [(i.check, i.severity) for i in issues] == [("facts_supported", "warning")]
+
+
+# ------------------------------------------------------------------ объём колоды (ТЗ: 10–15 слайдов)
+
+def _deck(intents):
+    from app.planning.models import ContentSlide, DeckContent, Item
+    slides = [ContentSlide(id=f"s{i}", intent=it, title=f"Слайд {i}",
+                           items=[Item(head="a"), Item(head="b")] if it in ("bullets", "cards") else [])
+              for i, it in enumerate(intents, 1)]
+    return DeckContent(title="t", slides=slides)
+
+
+def test_slide_count_follows_duration_and_bounds():
+    from app.planning.models import Brief
+    from app.planning.planner import auto_slide_count, notes_rule, target_count
+    assert target_count(Brief(topic="x", slide_count=8)) == 8          # явное число пользователя главнее
+    assert auto_slide_count(Brief(topic="x", duration_min=7)) == 11    # 7 мин → 10,5 → 11 слайдов
+    assert auto_slide_count(Brief(topic="x", duration_min=30)) == 15   # не больше 15
+    assert 11 <= auto_slide_count(Brief(topic="x")) <= 14
+    assert "слов" in notes_rule(Brief(topic="x", duration_min=7), 10)
+
+
+def test_trim_keeps_title_and_closing():
+    from app.planning.planner import trim_deck
+    d = _deck(["title"] + ["cards", "quote", "section"] * 6 + ["closing"])
+    trim_deck(d, 15)
+    assert len(d.slides) == 15 and d.slides[0].intent == "title" and d.slides[-1].intent == "closing"
+    # сначала уходят цитаты (их 6, убрать нужно 5), разделители и содержание не тронуты
+    assert sum(s.intent == "quote" for s in d.slides) == 1
+    assert sum(s.intent == "section" for s in d.slides) == 6
+
+
+def test_extender_fills_missing_slides():
+    from app.planning.models import Brief
+    from app.planning.planner import extend_deck
+
+    class FakeRun:
+        async def call(self, skill, **kw):
+            assert skill == "deck_extender" and kw["missing"] == 3
+            topics = ["Риски внедрения снимаются пилотом", "Обучение сотрудников занимает день",
+                      "Интеграция через открытое API", "Экономия бюджета отдела", "Экономия бюджета отдела маркетинга"]
+            return {"slides": [{"after": 2, "intent": "cards", "title": t,
+                                "items": [{"head": "x", "text": "y"}]} for t in topics]
+                    + [{"after": 3, "intent": "quote", "title": "Цитата без содержания"}]}
+
+    d = _deck(["title", "cards", "bullets", "cards", "bullets", "cards", "closing"])
+    prof = type("P", (), {"narrative": type("N", (), {"uses_kicker": False})(), "canvases": []})()
+    asyncio.run(extend_deck(d, 10, Brief(topic="x"), prof, FakeRun()))
+    assert len(d.slides) == 10 and d.slides[-1].intent == "closing"
+    assert [s.id for s in d.slides] == [f"s{i}" for i in range(1, 11)]
+    titles = [s.title for s in d.slides]
+    assert "Цитата без содержания" not in titles and "Экономия бюджета отдела маркетинга" not in titles
+
+
+def test_dense_merge_respects_floor():
+    from app.planning.variants import _merge_for_dense
+    d = _deck(["title"] + ["bullets"] * 10 + ["closing"])          # 12 слайдов, все сливаемые
+    assert len(_merge_for_dense(d.slides, budget=2)) == 10
+    assert len(_merge_for_dense(d.slides, budget=0)) == 12
+
+
+def test_materials_extract_text_and_pptx(tmp_path):
+    from app.planning.materials import combine, extract
+    assert "Лекало" in extract("readme.md", "# Лекало\nСервис".encode("utf-8"))
+    prs = Presentation()
+    s = prs.slides.add_slide(prs.slide_layouts[5])
+    s.shapes.title.text = "Выручка 48 млн"
+    buf = io.BytesIO()
+    prs.save(buf)
+    assert "48 млн" in extract("old.pptx", buf.getvalue())
+    with pytest.raises(ValueError):
+        extract("photo.png", b"\x89PNG")
+    both = combine([("a.md", "x" * 40_000), ("b.md", "y")])
+    assert "a.md" in both and "b.md" not in both and len(both) < 31_000   # общий лимит 30 тыс. знаков

@@ -5,7 +5,6 @@ import {
   Icon20MoonAutoOutline,
   Icon24AddCircleOutline,
   Icon24ArticlesOutline,
-  Icon24GearOutline,
   Icon24HomeOutline,
   Icon24PaletteOutline,
   Icon24SearchOutline,
@@ -25,7 +24,6 @@ const NAV = [
   { to: "/", label: "Главная", icon: <Icon24HomeOutline />, end: true },
   { to: "/projects", label: "Проекты", icon: <Icon24ArticlesOutline /> },
   { to: "/templates", label: "Шаблоны", icon: <Icon24PaletteOutline /> },
-  { to: "/system", label: "Система", icon: <Icon24GearOutline /> },
 ];
 
 export function Background() {
@@ -56,24 +54,6 @@ function ThemeSwitch() {
         { value: "dark", label: "", icon: <Icon20MoonOutline width={16} height={16} /> },
       ]}
     />
-  );
-}
-
-function StatusCard() {
-  const { data } = useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 30000, retry: 1 });
-  const model = data?.llm.model?.split("/").slice(-2, -1)[0] ?? "—";
-  return (
-    <div className="rounded-2xl border border-line bg-[color-mix(in_srgb,var(--surface)_55%,transparent)] p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-fg-3">Инференс</span>
-        {data ? <LiveDot color={data.llm.configured ? "var(--green)" : "var(--red)"} /> : <LiveDot color="var(--text-4)" />}
-      </div>
-      <div className="truncate text-[13px] font-semibold" title={data?.llm.model}>{model}</div>
-      <div className="mt-1 flex items-center gap-1.5 text-[12px] text-fg-3">
-        <span className={clsx("size-1.5 rounded-full", data?.images.enabled ? "bg-ok" : "bg-fg-4")} />
-        Иллюстрации: {data?.images.enabled ? "GigaChat" : "выключены"}
-      </div>
-    </div>
   );
 }
 
@@ -152,7 +132,6 @@ function SideNav({ onSearch }: { onSearch: () => void }) {
         <RecentMini />
       </div>
       <div className="space-y-3 pt-3">
-        <StatusCard />
         <ThemeSwitch />
       </div>
     </aside>
@@ -184,11 +163,10 @@ function BottomNav() {
     { to: "/templates", label: "Шаблоны", icon: <Icon24PaletteOutline /> },
     { to: "/new", label: "Создать", icon: <Icon24AddCircleOutline />, main: true },
     { to: "/projects", label: "Проекты", icon: <Icon24ArticlesOutline /> },
-    { to: "/system", label: "Система", icon: <Icon24GearOutline /> },
   ];
   return (
     <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-line bg-[color-mix(in_srgb,var(--bg)_78%,transparent)] px-2 pt-1.5 backdrop-blur-2xl lg:hidden">
-      <div className="mx-auto grid max-w-lg grid-cols-5">
+      <div className="mx-auto grid max-w-lg grid-cols-4">
         {items.map((it) => (
           <NavLink key={it.to} to={it.to} end={it.end}
             className={({ isActive }) => clsx("flex flex-col items-center gap-0.5 rounded-xl py-1 text-[10px] font-medium",

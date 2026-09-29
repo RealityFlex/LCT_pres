@@ -11,7 +11,7 @@ import re
 from typing import Optional
 
 from ..parsing.model import Canvas, TemplateProfile
-from .models import Column, ContentSlide, DeckContent, Item, SlideSpec, TableSpec, VariantPlan
+from .models import MIN_SLIDES, Column, ContentSlide, DeckContent, Item, SlideSpec, TableSpec, VariantPlan
 
 RECIPES = {
     #  intent       faithful        visual          dense
@@ -138,8 +138,12 @@ def build_variant(content: DeckContent, profile: TemplateProfile, vid: str, name
     k = IDX.get(strategy, 0)
     plan = VariantPlan(id=vid, name=name, strategy=strategy, description=description)
     slides = list(content.slides)
+    # объём по ТЗ держат все варианты: компактный уплотняет только то, что сверх целевого числа слайдов
+    floor = content.target_slides or MIN_SLIDES
+    spare = 0      # сколько служебных слайдов (разделители, план) компактный вариант ещё может убрать
     if strategy == "dense":
-        slides = _merge_for_dense(slides)
+        slides = _merge_for_dense(slides, budget=max(0, len(slides) - floor))
+        spare = max(0, len(slides) - floor)
     sec_no = 0
     content_i = 0
     for s in slides:
@@ -150,7 +154,8 @@ def build_variant(content: DeckContent, profile: TemplateProfile, vid: str, name
             continue
         if intent == "section":
             sec_no += 1
-            if strategy == "dense":
+            if strategy == "dense" and spare > 0:
+                spare -= 1
                 continue
             if pick.section:
                 plan.slides.append(SlideSpec(slide=s, recipe="section", canvas=pick.section.id,
@@ -175,7 +180,8 @@ def build_variant(content: DeckContent, profile: TemplateProfile, vid: str, name
                 plan.slides.append(SlideSpec(slide=s, recipe="cards" if s.items else "quote",
                                              canvas=pick.content_canvas("dark" if pick.dark else "light", strategy, 0).id))
             continue
-        if intent == "agenda" and strategy == "dense":
+        if intent == "agenda" and strategy == "dense" and spare > 0:
+            spare -= 1
             continue
         recipe = RECIPES[intent][k]
         opts: dict = {}
@@ -261,16 +267,22 @@ def _comparison_to_table(s: ContentSlide) -> ContentSlide:
     return s.model_copy(update={"table": TableSpec(columns=[c.title for c in cols], rows=rows)})
 
 
-def _merge_for_dense(slides: list[ContentSlide]) -> list[ContentSlide]:
-    """Сливает короткие соседние слайды: цитата → лид следующего, два коротких списка → сравнение."""
+def _merge_for_dense(slides: list[ContentSlide], budget: int = 99) -> list[ContentSlide]:
+    """Сливает короткие соседние слайды: цитата → лид следующего, два коротких списка → сравнение.
+    budget — сколько слайдов можно убрать, не опустившись ниже целевого объёма колоды."""
     out: list[ContentSlide] = []
     i = 0
     while i < len(slides):
         s = slides[i]
         nxt = slides[i + 1] if i + 1 < len(slides) else None
+        if budget <= 0:
+            out.append(s)
+            i += 1
+            continue
         if s.intent == "quote" and nxt is not None and nxt.intent not in ("section", "closing", "title") and not nxt.lead:
             out.append(nxt.model_copy(update={"lead": _short(s.quote or s.title, 24)}))
             i += 2
+            budget -= 1
             continue
         small = lambda x: x.intent in ("bullets", "cards") and 2 <= len(x.items) <= 3 and not x.chart and not x.table
         if nxt is not None and small(s) and small(nxt):
@@ -281,6 +293,7 @@ def _merge_for_dense(slides: list[ContentSlide]) -> list[ContentSlide]:
                 "notes": (s.notes + "\n" + nxt.notes).strip()})
             out.append(merged)
             i += 2
+            budget -= 1
             continue
         out.append(s)
         i += 1

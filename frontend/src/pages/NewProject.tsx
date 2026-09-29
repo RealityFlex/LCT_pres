@@ -1,7 +1,10 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Icon20CheckCircleOn,
+  Icon24DocumentPlusOutline,
   Icon24BriefcaseOutline,
+  Icon24CancelOutline,
+  Icon24ClockOutline,
   Icon24EducationOutline,
   Icon24LightbulbOutline,
   Icon24MagicWandOutline,
@@ -17,10 +20,12 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Dropzone, TemplateCard } from "../components/Cards";
 import { Button, Kbd, Panel, Segmented, Swatch, useToast } from "../components/ui";
-import { api, withW, type Brief } from "../lib/api";
+import { api, withW, type Brief, type Material } from "../lib/api";
 import { AUDIENCES, countNumbers, PURPOSES } from "../lib/format";
 
 const DRAFT = "lekalo-draft";
+const DURATIONS: (number | null)[] = [null, 5, 7, 10, 15, 20];
+const ACCEPT = ".txt,.md,.markdown,.pdf,.docx,.pptx,.csv,.json,.yaml,.yml,.html";
 const PURPOSE_ICON: Record<string, ReactNode> = {
   "проект": <Icon24BriefcaseOutline />,
   "продукт": <Icon24Rocket />,
@@ -31,7 +36,7 @@ const PURPOSE_ICON: Record<string, ReactNode> = {
 };
 
 function loadDraft(): Brief {
-  const empty: Brief = { topic: "", purpose: "проект", audience: "", details: "", slide_count: null, author: "", language: "ru", images: "auto" };
+  const empty: Brief = { topic: "", purpose: "проект", audience: "", details: "", slide_count: null, duration_min: null, author: "", language: "ru", images: "auto" };
   try {
     const d = JSON.parse(localStorage.getItem(DRAFT) || "null");
     return d ? { ...empty, ...d } : empty;
@@ -76,6 +81,24 @@ export default function NewProject() {
   const [brief, setBrief] = useState<Brief>(loadDraft);
   const [manual, setManual] = useState(brief.slide_count != null);
   const topicRef = useRef<HTMLInputElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [files, setFiles] = useState<Material[]>([]);
+  const [reading, setReading] = useState(false);
+  const attach = async (list: FileList | null) => {
+    if (!list?.length) return;
+    setReading(true);
+    try {
+      const r = await api.materials(Array.from(list));
+      setFiles((f) => [...f, ...r.files]);
+      const bad = r.files.filter((x) => x.error);
+      if (bad.length) toast({ tone: "bad", title: `Не прочитан: ${bad[0].name}`, text: bad[0].error });
+    } catch (e) {
+      toast({ tone: "bad", title: "Не удалось прочитать файлы", text: (e as Error).message });
+    } finally {
+      setReading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
 
   useEffect(() => {
     if (!tid && tpls.data?.length) setTid(tpls.data[0].id);
@@ -93,7 +116,7 @@ export default function NewProject() {
   const set = <K extends keyof Brief>(k: K, v: Brief[K]) => setBrief((b) => ({ ...b, [k]: v }));
 
   const create = useMutation({
-    mutationFn: () => api.createJob(tid!, { ...brief, slide_count: manual ? brief.slide_count ?? 12 : null }),
+    mutationFn: () => api.createJob(tid!, { ...brief, slide_count: manual ? brief.slide_count ?? 12 : null }, files),
     onSuccess: (r) => nav(`/project/${r.id}`),
     onError: (e: Error) => toast({ tone: "bad", title: "Не удалось запустить", text: e.message }),
   });
@@ -114,7 +137,12 @@ export default function NewProject() {
     return () => window.removeEventListener("keydown", on);
   });
 
-  const estSlides = manual ? brief.slide_count ?? 12 : Math.max(11, Math.min(14, 11 + Math.floor((nums + brief.details.split("\n").filter(Boolean).length) / 6)));
+  const estSlides = manual
+    ? brief.slide_count ?? 12
+    : brief.duration_min
+      ? Math.max(10, Math.min(15, Math.round(brief.duration_min * 1.5)))
+      : Math.max(11, Math.min(14, 11 + Math.floor((nums + brief.details.split("\n").filter(Boolean).length) / 6)));
+  const matChars = files.reduce((a, f) => a + (f.chars ?? 0), 0);
 
   return (
     <div className="mx-auto max-w-[1360px] px-4 py-6 max-lg:pb-24 sm:px-6 lg:px-10 lg:py-10">
@@ -173,6 +201,7 @@ export default function NewProject() {
               <div>
                 <Label hint={`${brief.topic.length}/140`}>О чём презентация</Label>
                 <input ref={topicRef} value={brief.topic} maxLength={140} onChange={(e) => set("topic", e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
                   placeholder="Например: запуск платформы «Умный склад» в розничной сети"
                   className="field !py-4 !text-[17px] font-medium" />
               </div>
@@ -225,7 +254,39 @@ export default function NewProject() {
               </div>
 
               <div>
-                <Label hint="GigaChat · Kandinsky, в стиле шаблона">Иллюстрации</Label>
+                <Label hint="README, документация, отчёты, старая презентация">Материалы</Label>
+                <input ref={fileRef} type="file" multiple accept={ACCEPT} className="hidden" onChange={(e) => attach(e.target.files)} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="soft" loading={reading} onClick={() => fileRef.current?.click()}
+                    icon={<Icon24DocumentPlusOutline width={18} height={18} />}>
+                    Приложить файлы
+                  </Button>
+                  {files.map((f, i) => (
+                    <span key={f.name + i} className={clsx("chip max-w-full", f.error && "!text-bad")} title={f.error}>
+                      <span className="truncate">{f.name}</span>
+                      {f.chars != null && <span className="text-fg-4">{Math.round(f.chars / 100) / 10} тыс. зн.</span>}
+                      <button aria-label="Убрать" onClick={() => setFiles((x) => x.filter((_, j) => j !== i))}>
+                        <Icon24CancelOutline width={14} height={14} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-2 text-[12px] text-fg-4">txt, md, pdf, docx, pptx — текст станет источником фактов наравне с полем выше</div>
+              </div>
+
+              <div>
+                <Label hint="объём колоды и текст для спикера">Длительность выступления</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {DURATIONS.map((d) => (
+                    <button key={String(d)} className="chip" data-on={brief.duration_min === d} onClick={() => set("duration_min", d)}>
+                      {d == null ? "Не важно" : <><Icon24ClockOutline width={14} height={14} /> {d} мин</>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <Label hint="в стиле шаблона">Иллюстрации</Label>
                 <Segmented value={brief.images} onChange={(v) => set("images", v)} options={[
                   { value: "auto", label: "Где уместно" },
                   { value: "on", label: "Обязательно" },
@@ -235,11 +296,11 @@ export default function NewProject() {
 
               <div className="grid gap-6 sm:grid-cols-2">
                 <div>
-                  <Label hint={manual ? `${brief.slide_count ?? 12} слайдов` : "по объёму брифа"}>Количество слайдов</Label>
+                  <Label hint={manual ? `${brief.slide_count ?? 12} слайдов` : brief.duration_min ? "по длительности" : "10–15, по объёму брифа"}>Количество слайдов</Label>
                   <Segmented value={manual ? "manual" : "auto"} onChange={(v) => { setManual(v === "manual"); if (v === "manual" && !brief.slide_count) set("slide_count", 12); }}
                     options={[{ value: "auto", label: "Автоматически" }, { value: "manual", label: "Задать" }]} />
                   {manual && (
-                    <input type="range" min={6} max={16} value={brief.slide_count ?? 12} onChange={(e) => set("slide_count", Number(e.target.value))}
+                    <input type="range" min={5} max={20} value={brief.slide_count ?? 12} onChange={(e) => set("slide_count", Number(e.target.value))}
                       className="mt-4 w-full accent-[var(--brand)]" />
                   )}
                 </div>
@@ -280,15 +341,21 @@ export default function NewProject() {
                 <div className="flex justify-between"><span className="text-fg-3">Слайдов в варианте</span><span className="font-semibold">≈ {estSlides}</span></div>
                 <div className="flex justify-between"><span className="text-fg-3">Назначение</span><span className="font-semibold">{PURPOSES.find((p) => p.id === brief.purpose)?.label}</span></div>
                 <div className="flex justify-between"><span className="text-fg-3">Цифр в данных</span><span className="font-semibold">{nums}</span></div>
+                {brief.duration_min != null && (
+                  <div className="flex justify-between"><span className="text-fg-3">Выступление</span><span className="font-semibold">{brief.duration_min} мин + текст спикера</span></div>
+                )}
+                {files.length > 0 && (
+                  <div className="flex justify-between"><span className="text-fg-3">Материалы</span><span className="font-semibold">{files.filter((f) => f.text).length} файл. · {Math.round(matChars / 1000)} тыс. зн.</span></div>
+                )}
                 <div className="flex justify-between"><span className="text-fg-3">Иллюстрации</span><span className="font-semibold">{brief.images === "off" ? "нет" : brief.images === "on" ? "2–3 слайда" : "по смыслу"}</span></div>
-                <div className="flex justify-between"><span className="text-fg-3">Бюджет времени</span><span className="font-semibold">до 5 минут</span></div>
+                <div className="flex justify-between"><span className="text-fg-3">Время генерации</span><span className="font-semibold">до 5 минут</span></div>
               </div>
               <Button variant="primary" size="lg" glow className="w-full" loading={create.isPending} disabled={!ready} onClick={submit}
                 icon={<Icon24MagicWandOutline width={22} height={22} />}>
                 Сгенерировать 3 варианта
               </Button>
               <div className="hidden items-center justify-center gap-1.5 text-[12px] text-fg-4 lg:flex">
-                <Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd>
+                <Kbd>Enter</Kbd> в теме или <Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd>
               </div>
             </div>
           </Panel>
