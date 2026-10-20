@@ -2,7 +2,8 @@
 
 * thinking отключается через chat_template_kwargs (Qwen3.x), иначе ответы в разы дольше;
 * JSON извлекается из ответа устойчиво (```json-блоки, хвосты), при ошибке — один запрос на починку;
-* при ошибке основной модели — запасная (fallback_model);
+* при ошибке основной модели — запасная (fallback_model); если недоступен весь основной контур (инференс VK) —
+  тот же запрос уходит в Yandex AI Studio (Settings.backup), и ближайшие 2 минуты основной не пробуется;
 * общий семафор ограничивает параллелизм.
 """
 from __future__ import annotations
@@ -94,38 +95,66 @@ def extract_json(text: str) -> Any:
         return json.loads(frag2)
 
 
+_PRIMARY_DOWN = [0.0]          # до какого времени основной контур считается недоступным (общий для клиентов)
+
+
 class LLM:
     def __init__(self):
         s = get_settings()
         self.s = s
         if not s.llm_api_key:
             raise LLMError("LLM_API_KEY не задан (.env)")
+        headers = {"Project-ID": s.llm_project_id} if s.llm_project_id else None
         self.client = openai.AsyncOpenAI(api_key=s.llm_api_key, base_url=s.llm_base_url,
                                          project=s.llm_folder or None, timeout=float(s.llm.get("timeout_s", 90)),
-                                         max_retries=1)
+                                         max_retries=1, default_headers=headers)
         self.sem = asyncio.Semaphore(int(s.llm.get("max_concurrency", 8)))
-        self.stats = {"calls": 0, "seconds": 0.0, "tokens_in": 0, "tokens_out": 0, "errors": 0}
+        self.stats = {"calls": 0, "seconds": 0.0, "tokens_in": 0, "tokens_out": 0, "errors": 0, "backup_calls": 0}
+        self.backup = None
+        if s.backup:
+            b = s.backup
+            self.backup = (openai.AsyncOpenAI(api_key=b["api_key"], base_url=b["base_url"], project=b["folder"] or None,
+                                              timeout=float(s.llm.get("timeout_s", 90)), max_retries=1),
+                           asyncio.Semaphore(b["max_concurrency"]), b["models"])
+
+    def _routes(self, kind: str) -> list[tuple[Any, asyncio.Semaphore, str, bool]]:
+        """(клиент, семафор, модель, запасной контур?) в порядке попыток."""
+        main = [self.s.model(kind)]
+        fb = self.s.llm.get("fallback_model")
+        if fb and kind == "text" and fb.format(folder=self.s.llm_folder) != main[0]:
+            main.append(fb.format(folder=self.s.llm_folder))
+        routes = [] if time.time() < _PRIMARY_DOWN[0] and self.backup else             [(self.client, self.sem, m, False) for m in main]
+        if self.backup:
+            cl, sem, models = self.backup
+            bm = [models["vision" if kind == "vision" else "text"]]
+            if kind == "text" and models.get("fallback") and models["fallback"] not in bm:
+                bm.append(models["fallback"])
+            routes += [(cl, sem, m, True) for m in bm if m]
+        return routes
 
     async def chat(self, messages: list[dict], kind: str = "text", temperature: Optional[float] = None,
                    max_tokens: int = 2000, json_mode: bool = False, trace: Optional[dict] = None) -> str:
-        models = [self.s.model(kind)]
-        fb = self.s.llm.get("fallback_model")
-        if fb and kind == "text":
-            models.append(fb.format(folder=self.s.llm_folder))
         last_err: Optional[Exception] = None
-        for model in models:
+        tried_primary = False
+        for client, sem, model, is_backup in self._routes(kind):
+            if is_backup and tried_primary:
+                _PRIMARY_DOWN[0] = time.time() + 120          # основной лёг — 2 минуты сразу в запасной контур
+                tried_primary = False
+                log.warning("основной инференс недоступен (%s) — переключаюсь на Yandex AI Studio", last_err)
+            tried_primary = tried_primary or not is_backup
             extra: dict[str, Any] = {}
             if self.s.llm.get("disable_thinking", True) and "qwen" in model.lower():
                 extra["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
             for attempt in range(2):
                 t0 = time.time()
                 try:
-                    async with self.sem:
-                        r = await self.client.chat.completions.create(
+                    async with sem:
+                        r = await client.chat.completions.create(
                             model=model, messages=messages, max_tokens=max_tokens,
                             temperature=self.s.llm.get("temperature", 0.3) if temperature is None else temperature,
                             **extra)
                     self.stats["calls"] += 1
+                    self.stats["backup_calls"] += int(is_backup)
                     self.stats["seconds"] += time.time() - t0
                     if r.usage:
                         self.stats["tokens_in"] += r.usage.prompt_tokens or 0
@@ -190,7 +219,7 @@ def reset_llm() -> None:
 
 
 def total_stats() -> dict:
-    out = {"calls": 0, "seconds": 0.0, "tokens_in": 0, "tokens_out": 0, "errors": 0}
+    out = {"calls": 0, "seconds": 0.0, "tokens_in": 0, "tokens_out": 0, "errors": 0, "backup_calls": 0}
     for c in _clients.values():
         for k in out:
             out[k] += c.stats.get(k, 0)

@@ -9,8 +9,8 @@ import io
 import re
 from pathlib import Path
 
-MAX_FILE_CHARS = 20_000      # на файл: README или отчёт целиком, но не дамп репозитория
-MAX_TOTAL_CHARS = 30_000     # на бриф: столько планировщик читает без потери скорости
+MAX_FILE_CHARS = 150_000     # на файл: методичка или отчёт целиком (длинные читаются по кускам, см. digest.py)
+MAX_TOTAL_CHARS = 200_000    # на бриф; больше digest_over_chars планировщик получает выжимку
 
 TEXT_EXT = {".txt", ".md", ".markdown", ".rst", ".csv", ".tsv", ".json", ".yaml", ".yml", ".html", ".htm"}
 SUPPORTED = TEXT_EXT | {".pdf", ".docx", ".pptx"}

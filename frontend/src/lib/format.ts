@@ -69,9 +69,10 @@ export const CATEGORY: Record<string, string> = {
 };
 
 export const SEVERITY: Record<string, { label: string; color: string }> = {
-  error: { label: "Ошибка", color: "var(--red)" },
-  warning: { label: "Замечание", color: "var(--orange)" },
-  info: { label: "Совет", color: "var(--accent)" },
+  // аудит — подсказки к доработке, а не поломка: без красного и без слова «ошибка»
+  error: { label: "Предупреждение", color: "var(--orange)" },
+  warning: { label: "Замечание", color: "var(--accent)" },
+  info: { label: "Совет", color: "var(--text-4)" },
 };
 
 export const CANVAS_KIND: Record<string, string> = {

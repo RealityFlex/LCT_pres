@@ -1,0 +1,10 @@
+id: navy-consulting
+name: Консалтинг · тёмно-синий
+category: consulting
+mood: строгий, деловой, уверенный
+description: Белый фон, тёмно-синий структурный цвет и янтарный акцент. Стратегии, отчёты, решения для руководства.
+generator: editorial
+palette: {bg: FFFFFF, surface: F4F6F9, primary: 14213D, secondary: 3A6EA5, accent: E08A1E, text: 1B1F24,
+          muted: 5F6B7A, rule: DCE1E8, dark_bg: 14213D, dark_text: FFFFFF}
+fonts: {heading: Manrope, body: Manrope, mono: IBM Plex Mono}
+chrome: {motif: bars, title_size: 27, kicker_spacing: 1.6}

@@ -20,7 +20,8 @@ export default function Templates() {
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Dropzone onReady={(id) => { toast({ tone: "ok", title: "Шаблон разобран" }); nav(`/templates/${id}`); }} />
+        <Dropzone multiple onReady={(id) => { toast({ tone: "ok", title: "Шаблон разобран" }); nav(`/templates/${id}`); }}
+          onBatch={(ids) => toast({ tone: "ok", title: `Разобрано шаблонов: ${ids.length}`, text: "Они уже в библиотеке — можно генерировать." })} />
         {tpls.isLoading && Array.from({ length: 3 }).map((_, k) => <div key={k} className="skeleton aspect-[4/3.3] rounded-[20px]" />)}
         {(tpls.data ?? []).map((t, k) => (
           <motion.div key={t.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: k * 0.05 }}>

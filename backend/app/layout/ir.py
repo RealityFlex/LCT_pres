@@ -51,6 +51,9 @@ class El(BaseModel):
     geom: str = "rect"
     radius: Optional[float] = None    # абсолютный радиус скругления, EMU
     arrow: bool = False
+    flip_h: bool = False              # линия справа налево (стрелки «назад» в схемах)
+    flip_v: bool = False              # линия снизу вверх
+    dash: bool = False
     # медиа
     icon: Optional[str] = None
     image: Optional[str] = None

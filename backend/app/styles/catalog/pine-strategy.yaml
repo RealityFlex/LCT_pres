@@ -1,0 +1,10 @@
+id: pine-strategy
+name: Сосновая стратегия
+category: consulting
+mood: уверенный, природный, стратегический
+description: Светлый фон, хвойно-зелёный и горчичный акцент. Стратегии, трансформация, устойчивое развитие.
+generator: editorial
+palette: {bg: F7F8F4, surface: EEF0E8, primary: 1F3D2B, secondary: 4E7A5C, accent: C9A227, text: 1D2620,
+          muted: 5F6B62, rule: DCE0D4, dark_bg: 1F3D2B, dark_text: F3F4EE}
+fonts: {heading: Golos Text, body: Golos Text, mono: IBM Plex Mono}
+chrome: {motif: bars, title_size: 27}

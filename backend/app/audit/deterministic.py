@@ -114,6 +114,9 @@ class DeterministicAuditor:
         self.allowed_fonts = {f.lower() for f in [ty.heading_font, ty.body_font, ty.title.font, ty.number.font,
                                                   ty.caption.font] if f}
         self.allowed_fonts |= {f.lower() for f in profile.fonts_found}
+        # моноширинный шрифт блоков кода — третья гарнитура по делу: не «чужой» шрифт и не в счёт двух семейств
+        self.mono_fonts = {f.lower() for f in [profile.mono_font, "Courier New", "Consolas", "JetBrains Mono"] if f}
+        self.allowed_fonts |= self.mono_fonts
         self.scale = sorted(set(ty.scale))
         self._src_cache: dict[int, dict[str, ShapeInfo]] = {}
         self._tpl: Optional[TemplateAnalyzer] = None
@@ -251,7 +254,8 @@ class DeterministicAuditor:
             for s in texts:
                 for p in s.paras:
                     f = (p.style.font or "").lower()
-                    fams.add(f)
+                    if f not in self.mono_fonts:
+                        fams.add(f)
                     if f and f not in self.allowed_fonts and not self._font_alias(f):
                         _issue(issues, "font_not_in_template", "Шрифт не из шаблона", "template", i,
                                f"Гарнитура «{p.style.font}» не используется в шаблоне", "warning", s, _ir_id(s.name),
@@ -350,7 +354,12 @@ class DeterministicAuditor:
                 has_legend = first(root, ".//c:legend") is not None
                 pie = bool(xp(root, ".//c:pieChart | .//c:doughnutChart"))
                 checks.add("chart_labels")
-                if not has_labels or (not pie and not has_axis_title and n_ser == 1 and not has_legend and False):
+                # подписи сознательно сняты: рассеяние, линия длиннее 14 точек, больше 20 категорий
+                pt = first(root, ".//c:ser//c:val//c:ptCount")
+                pt = pt if pt is not None else first(root, ".//c:ser//c:yVal//c:ptCount")
+                n_pts = int(pt.get("val")) if pt is not None else 0
+                dense = bool(xp(root, ".//c:scatterChart")) or (bool(xp(root, ".//c:lineChart")) and n_pts > 14) or n_pts > 20
+                if (not has_labels and not (dense and has_axis_title)) or (not pie and not has_axis_title and n_ser == 1 and not has_legend and False):
                     _issue(issues, "chart_labels", "У диаграммы нет подписей, единиц или легенды", "integrity", i,
                            "Нет подписей значений", "warning", None, None, {"action": "recompose"})
                 if n_ser > 1 and not has_legend:

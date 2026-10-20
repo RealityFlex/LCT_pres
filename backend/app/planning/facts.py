@@ -32,7 +32,7 @@ def numbers(text: str) -> list[float]:
 
 
 def source_numbers(brief: Brief) -> set[float]:
-    return set(numbers(" ".join([brief.topic, brief.audience, brief.details])))
+    return set(numbers(" ".join([brief.topic, brief.audience, brief.details, brief.source_text])))
 
 
 def _derived_ok(v: float, src: set[float]) -> bool:

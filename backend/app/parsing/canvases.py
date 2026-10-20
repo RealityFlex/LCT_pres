@@ -117,7 +117,11 @@ def draft_canvases(an: TemplateAnalyzer, slides: list[SlideAnalysis], grid: Box,
         else:
             if sa.title is None:
                 continue
-            keep = [it.sid for it in sa.items if it.sid in sa.chrome or it in (sa.title, sa.kicker, sa.label)]
+            # «заголовок» — подпись под фото (имя в слайде «команда»): заголовку вывода там не уместиться
+            ts = next((sl for sl in sa.slots if sl.role == "title"), None)
+            if ts is not None and ts.box.w < 0.15 * W and ts.max_chars < 12:
+                continue
+            keep =[it.sid for it in sa.items if it.sid in sa.chrome or it in (sa.title, sa.kicker, sa.label)]
         # контентная область
         footer_tops = [it.top.y for it in sa.items if it.sid in sa.chrome and it.top.y > 0.78 * H
                        and it.top.area < 0.3 * W * H]

@@ -147,8 +147,8 @@ export function Filmstrip({ slides, index, onIndex, issues, vertical, rev }: {
             <span className="absolute left-1.5 top-1.5 rounded-md bg-black/60 px-1.5 font-mono text-[10px] font-semibold text-white">{s.index}</span>
             {(errs > 0 || warns > 0) && (
               <span className="absolute right-1.5 top-1.5 flex gap-0.5">
-                {errs > 0 && <span className="size-2 rounded-full bg-bad ring-2 ring-black/40" />}
-                {warns > 0 && <span className="size-2 rounded-full bg-orange ring-2 ring-black/40" />}
+                {errs > 0 && <span className="size-2 rounded-full bg-orange ring-2 ring-black/40" />}
+                {warns > 0 && <span className="size-2 rounded-full bg-accent ring-2 ring-black/40" />}
               </span>
             )}
           </button>

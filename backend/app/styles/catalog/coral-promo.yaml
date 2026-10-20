@@ -1,0 +1,10 @@
+id: coral-promo
+name: Коралловый промо
+category: promo
+mood: яркий, энергичный, продуктовый
+description: Белый фон, глубокий индиго и коралловый акцент, крупные широкие заголовки. Запуски продуктов, маркетинг, питчи.
+generator: editorial
+palette: {bg: FFFFFF, surface: F5F4FB, primary: 1D1B4B, secondary: 5B54D6, accent: F25C4C, text: 1A1930,
+          muted: 6A6880, rule: E3E1EE, dark_bg: 1D1B4B, dark_text: FFFFFF}
+fonts: {heading: Unbounded, body: Onest, mono: IBM Plex Mono}
+chrome: {motif: circle, title_size: 24, cover_title_size: 40, kicker_spacing: 1.5, cover: split}

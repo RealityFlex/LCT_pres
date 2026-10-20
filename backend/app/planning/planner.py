@@ -10,7 +10,8 @@ from ..layout import icons
 from ..layout.textfit import text_width
 from ..llm.skills import SkillRun
 from ..parsing.model import TemplateProfile
-from .models import INTENTS, MAX_SLIDES, MIN_SLIDES, Brief, ChartSpec, Column, ContentSlide, DeckContent, Item, Series, TableSpec
+from .models import (INTENTS, MAX_SLIDES, MIN_SLIDES, Brief, ChartSpec, CodeSpec, Column, ContentSlide, DeckContent, Item,
+                     Series, TableSpec)
 
 log = logging.getLogger("planner")
 NUM_RE = re.compile(r"[-−+]?\d+(?:[.,]\d+)?")
@@ -70,6 +71,9 @@ def auto_slide_count(brief: Brief) -> int:
     """Объём колоды: по длительности выступления (≈1,5 слайда в минуту), иначе по богатству брифа — 11–14."""
     if brief.duration_min:
         return max(MIN_SLIDES, min(MAX_SLIDES, int(brief.duration_min * 1.5 + 0.5)))   # обычное округление, как в интерфейсе
+    if len(brief.source_text) > 15000:
+        # длинный документ (методичка, отчёт): как Kimi — объём по размеру материала, 15–20 слайдов
+        return max(15, min(20, 13 + len(brief.source_text) // 10000))
     facts = len(_nums(brief.details)) + len([ln for ln in brief.details.splitlines() if ln.strip()])
     return max(11, min(14, 11 + facts // 6))
 
@@ -119,7 +123,7 @@ def _s(x: Any, limit: int = 400) -> str:
 
 
 def normalize(raw: dict, brief: Brief, profile: TemplateProfile) -> DeckContent:
-    source_nums = _nums(" ".join([brief.topic, brief.details, brief.audience]))
+    source_nums = _nums(" ".join([brief.topic, brief.details, brief.audience, brief.source_text]))
     slides: list[ContentSlide] = []
     for s in raw.get("slides") or []:
         sl = norm_slide(s, source_nums, profile, len(slides) + 1)
@@ -178,7 +182,10 @@ def norm_slide(s: Any, source_nums: set[float], profile: TemplateProfile, idx: i
     columns = []
     for c in (s.get("columns") or [])[:3]:
         if isinstance(c, dict) and c.get("points"):
-            columns.append(Column(title=_s(c.get("title"), 40), points=[_s(p, 90) for p in c["points"]][:6]))
+            # модель иногда отдаёт пункты объектами {"head", "text"} — на слайд идёт текст, а не JSON
+            pts = [" — ".join(x for x in (_s(p.get("head"), 40), _s(p.get("text"), 90)) if x) if isinstance(p, dict)
+                   else _s(p, 90) for p in c["points"]]
+            columns.append(Column(title=_s(c.get("title"), 40), points=[p for p in pts if p][:6]))
     if intent == "chart" and chart is None:
         intent = "stats" if sum(1 for it in items if it.value) >= 2 else "cards"
     if intent == "stats" and sum(1 for it in items if it.value) < 3:
@@ -192,10 +199,20 @@ def norm_slide(s: Any, source_nums: set[float], profile: TemplateProfile, idx: i
             intent = "comparison"
         elif s.get("quote") or s.get("lead"):
             intent = "quote"
+    code = None
+    cd = s.get("code")
+    if isinstance(cd, str):
+        cd = {"text": cd}
+    if isinstance(cd, dict) and str(cd.get("text") or "").strip():
+        # код — построчно и с отступами, без схлопывания пробелов (как у остальных полей)
+        lines = [ln.rstrip()[:100] for ln in str(cd["text"]).replace("\t", "    ").splitlines()][:18]
+        code = CodeSpec(lang=_s(cd.get("lang"), 20), text="\n".join(lines).strip("\n"), caption=_s(cd.get("caption"), 90))
+    if intent == "code" and code is None:
+        intent = "bullets" if items else "quote"
     return ContentSlide(
         id=f"s{idx}", intent=intent, title=_s(s.get("title"), 140) or "—", lead=_s(s.get("lead"), 200),
         kicker=_s(s.get("kicker"), 40) if profile.narrative.uses_kicker else "", section=_s(s.get("section"), 40),
-        items=items, chart=chart, table=table, columns=columns, quote=_s(s.get("quote"), 220),
+        items=items, chart=chart, table=table, columns=columns, quote=_s(s.get("quote"), 220), code=code,
         image_prompt=_s(s.get("image_prompt"), 400), notes=_s(s.get("notes"), 1500))
 
 
@@ -203,7 +220,10 @@ async def plan_deck(brief: Brief, profile: TemplateProfile, run: SkillRun) -> De
     s = get_settings()
     n = target_count(brief)
     slide_rule = f"ровно {n} (включая титульный и финальный)"
-    img_ok = s.images.get("provider") != "none" and bool(s.gigachat_key)
+    gen_ok = s.images.get("provider") != "none" and bool(s.gigachat_key)
+    src = (brief.image_source or "auto").lower()
+    # фото Wikimedia Commons не требуют ключей; генератор — ключа GigaChat
+    img_ok = (gen_ok and src != "web") or src in ("auto", "web")
     mode = (brief.images or "auto").lower()
     max_images = 0 if (not img_ok or mode == "off") else int(s.images.get("max_per_deck", 3))
     image_rule = ("обязательно сделай 2–3 слайда с intent \"image\" (иллюстрация + тезисы)" if mode == "on" and max_images
@@ -213,7 +233,8 @@ async def plan_deck(brief: Brief, profile: TemplateProfile, run: SkillRun) -> De
         f"современная минималистичная 3D-иллюстрация, чистый фон, фирменные цвета #{profile.palette.primary}"
         + (f" и #{profile.palette.accents[0]}" if profile.palette.accents else "") + ", мягкий свет, без текста")
     target = n or 12
-    max_sections = 0 if not profile.narrative.has_sections else (3 if target >= 13 else 2 if target >= 9 else 0)
+    # разделители съедают место под содержание: три — только в длинной колоде
+    max_sections = 0 if not profile.narrative.has_sections else (3 if target >= 15 else 2 if target >= 9 else 0)
     purpose_key = next((k for k in ARCS if k in (brief.purpose or "").lower()), "другое")
     raw = await run.call(
         "deck_planner", language="русский" if brief.language == "ru" else brief.language, slide_rule=slide_rule,
@@ -236,17 +257,178 @@ async def plan_deck(brief: Brief, profile: TemplateProfile, run: SkillRun) -> De
     elif mode == "on":
         ensure_images(deck, 2, image_style)
     else:
-        ensure_images(deck, 0, image_style)
+        # «где уместно» — хотя бы одна иллюстрация на колоду: без картинок колода читается как отчёт
+        ensure_images(deck, 1 if len(deck.slides) >= 9 else 0, image_style)
     limit_sections(deck, max_sections)
     if len(deck.slides) < n:
         await extend_deck(deck, n, brief, profile, run)
-    trim_deck(deck, n if brief.slide_count else MAX_SLIDES)
+    trim_deck(deck, n if brief.slide_count else max(MAX_SLIDES, n))
     deck.target_slides = min(n, len(deck.slides))
+    changed = diversify(deck, bool(max_images)) + ensure_code(deck, f"{brief.source_text}\n{brief.details}")
+    await enrich_thin(deck, brief, profile, run, changed)
     if max_images:
         from ..layout.images import palette_words
         await illustrate(deck, brief, palette_words(profile), run)
     await fill_notes(deck, brief, run)
     return deck
+
+
+THIN_INTENTS = {"cards", "bullets", "process", "timeline", "stats", "comparison", "image", "quote"}
+
+
+def is_thin(s: ContentSlide) -> bool:
+    """Почти пустой содержательный слайд: никакая вёрстка его не спасёт — его надо дописать."""
+    if s.intent not in THIN_INTENTS:
+        return False
+    if s.intent == "quote":       # главная мысль одна в пустом слайде — нужны опорные тезисы рядом
+        return len([it for it in s.items if it.text or it.head]) < 2
+    if s.intent == "comparison":
+        words = sum(len(pt.split()) for c in s.columns for pt in c.points)
+        return len(s.columns) < 2 or sum(len(c.points) for c in s.columns) < 4 or words < 24
+    words = sum(len(f"{it.head} {it.text}".split()) for it in s.items)
+    return len(s.items) < 3 or words < max(18, 7 * len(s.items))
+
+
+STRUCTURAL = {"title", "agenda", "section", "closing"}
+YEAR = re.compile(r"\b(1[89]\d\d|20\d\d)\b")
+CONTRAST = re.compile(r"\b(против|vs|или|отлич|разниц|противополож|сравнен|до и после|раньше|теперь)", re.I)
+
+# как переписать слайд в другой тип: что именно должно получиться (сценарист видит и старое содержание)
+REWRITE = {
+    "timeline": "перепиши как таймлайн (intent timeline): 3–5 вех по порядку, value — год или период, head — событие, "
+                "text — что изменилось",
+    "comparison": "перепиши как сравнение двух сторон (intent comparison): columns — две колонки с короткими "
+                  "заголовками и 3 пунктами каждая",
+    "quote": "перепиши как слайд главной мысли (intent quote): quote — одна сильная фраза до 18 слов, items — 2–3 "
+             "опорных тезиса (head 1–3 слова + text 6–12 слов)",
+    "process": "перепиши как процесс (intent process): 3–4 шага по порядку, value «Шаг 1»…, head — действие, "
+               "text — что происходит",
+    "bullets": "перепиши как список (intent bullets): 3–5 пунктов, head — суть, text — пояснение",
+    "image": "перепиши как слайд с иллюстрацией (intent image): 3 тезиса (head + text) рядом с картинкой; "
+             "image_prompt — буквальная сцена по смыслу слайда",
+}
+
+
+def _pick_intent(s: ContentSlide, avoid: set[str], allow_image: bool, used: dict[str, int]) -> str:
+    """Тип по содержанию: даты → таймлайн, противопоставление → сравнение, иначе — реже всего встречавшийся."""
+    txt = " ".join([s.title, s.lead] + [f"{it.value or ''} {it.head} {it.text}" for it in s.items])
+    if len(set(YEAR.findall(txt))) >= 3 and "timeline" not in avoid:
+        return "timeline"
+    if (CONTRAST.search(txt) or len(s.items) == 2) and "comparison" not in avoid:
+        return "comparison"
+    pool = ["quote", "bullets", "comparison", "process"] + (["image"] if allow_image else [])
+    pool = [p for p in pool if p not in avoid] or ["bullets"]
+    return min(pool, key=lambda p: (used.get(p, 0), pool.index(p)))
+
+
+def diversify(deck: DeckContent, allow_image: bool = False) -> list[ContentSlide]:
+    """Одинаковые слайды подряд и колода из одних карточек читаются как шаблон: карточек — не больше трети
+    содержательных слайдов, один тип два раза подряд — нельзя. Лишние слайды получают другой тип по смыслу
+    и указание сценаристу переписать их (содержание сохраняется). Возвращает изменённые слайды."""
+    body = [s for s in deck.slides if s.intent not in STRUCTURAL]
+    if len(body) < 4:
+        return []
+    used: dict[str, int] = {}
+    for s in body:
+        used[s.intent] = used.get(s.intent, 0) + 1
+    cap = max(2, -(-len(body) // 3))
+    changed: list[ContentSlide] = []
+    slides = deck.slides
+    for i, s in enumerate(slides):
+        if s.intent in STRUCTURAL or s.chart or s.table:
+            continue
+        if s.intent == "code":
+            continue
+        prev = slides[i - 1].intent if i else ""
+        nxt = slides[i + 1].intent if i + 1 < len(slides) else ""
+        # процесс за процессом и таймлайн за таймлайном — части одной методики, их не трогаем;
+        # одинаковыми подряд нельзя только «плоские» слайды
+        repeat = s.intent == prev and s.intent in ("cards", "bullets", "quote", "image", "stats")
+        excess = s.intent in ("cards", "bullets") and used.get(s.intent, 0) > cap
+        if not (repeat or excess):
+            continue
+        new = _pick_intent(s, {s.intent, prev, nxt}, allow_image and used.get("image", 0) < 2, used)
+        if new == s.intent:
+            continue
+        old = "; ".join(f"{it.head}: {it.text}" if it.text else it.head for it in s.items) or s.lead or s.quote
+        used[s.intent] -= 1
+        used[new] = used.get(new, 0) + 1
+        s.intent = new
+        s.instruction = f"{REWRITE[new]}. Сохрани смысл и факты прежнего содержания: {old[:600]}. Ничего не выдумывай"
+        if new == "image" and not s.image_prompt:
+            s.image_prompt = _scene(s)
+        changed.append(s)
+    return changed
+
+
+def ensure_code(deck: DeckContent, material: str, max_slides: int = 2) -> list[ContentSlide]:
+    """В материалах есть код, а в колоде нет ни одного слайда с ним — добавить 1–2 слайда с листингами дословно
+    (рядом со слайдом, который ближе всего по смыслу); тексты-пояснения допишет сценарист."""
+    have = [s for s in deck.slides if s.intent == "code" and s.code]
+    if len(have) >= max_slides:
+        return []
+    from .code import find_snippets, group_snippets
+    groups = group_snippets(find_snippets(material, 10), max_slides=max_slides)
+    shown = " ".join(re.sub(r"\s+", "", s.code.text) for s in have)
+    # фрагмент, который сценарист уже поставил на слайд, второй раз не нужен
+    groups = [g for g in groups if not any(re.sub(r"\s+", "", ln) in shown for ln in g.lines
+                                           if ln.strip() and not ln.lstrip().startswith(("#", "//", "def ")))]
+    groups = groups[:max_slides - len(have)]
+    if not groups:
+        return []
+    added = []
+    for g in groups:
+        ctx = material[max(0, g.pos - 1500):g.pos + 600].lower()
+        words = {w[:6] for w in re.findall(r"[а-яёa-z]{5,}", ctx)}
+        best, score = None, -1
+        for k, s in enumerate(deck.slides):
+            if s.intent in ("title", "agenda"):
+                continue
+            if s.intent == "closing":
+                break
+            txt = " ".join([s.title] + [f"{it.head} {it.text}" for it in s.items]).lower()
+            sc = sum(1 for w in set(w[:6] for w in re.findall(r"[а-яёa-z]{5,}", txt)) if w in words)
+            if sc > score:
+                best, score = k, sc
+        pos = (best if best is not None else len(deck.slides) - 2) + 1
+        if added:                               # фрагменты идут в порядке материала: следующий — не раньше предыдущего
+            pos = max(pos, deck.slides.index(added[-1]) + 1)
+        what = g.caption or g.lead or "пример кода из материалов"
+        s = ContentSlide(id="new", intent="code", title=what[:80],
+                         code=CodeSpec(lang=g.lang, text=g.text, caption=g.caption))
+        s.instruction = (f"слайд с примером кода ({what}). Код уже стоит на слайде — НЕ переписывай и не возвращай code. "
+                         "Дай заголовок-вывод (что показывает пример, до 8 слов) и 2–3 items: head — что в коде, "
+                         "text — зачем это и что получится (6–12 слов), по материалам. Код:\n" + g.text[:900])
+        deck.slides.insert(pos, s)
+        added.append(s)
+    for i, s in enumerate(deck.slides, 1):        # позиционные id, как после normalize
+        s.id = f"s{i}"
+    return added
+
+
+async def enrich_thin(deck: DeckContent, brief: Brief, profile: TemplateProfile, run: SkillRun,
+                      extra: Optional[list[ContentSlide]] = None) -> list[str]:
+    """Слайды с одним-двумя тезисами или почти без текста дописываются по брифу и материалам (без выдумок).
+    extra — слайды, уже помеченные к переписыванию (например, сменившие тип в diversify): один вызов на всё."""
+    todo = list(extra or [])
+    for s in deck.slides:
+        if s in todo or not is_thin(s):
+            continue
+        s.instruction = ("слайд почти пустой: дай 3–4 тезиса (head 1–4 слова + text 8–14 слов) с конкретикой "
+                         "из брифа и материалов, сохрани уже написанное, ничего не выдумывай")
+        if s.intent == "quote":
+            s.instruction = ("сохрани главную мысль (quote) дословно и добавь 2–3 опорных тезиса в items (head 1–3 слова + "
+                             "text 6–12 слов), которые её подтверждают по брифу и материалам; ничего не выдумывай")
+        s.notes = s.notes or ""
+        todo.append(s)
+    if not todo:
+        return []
+    from .outline import write_slides
+    try:
+        await write_slides(deck, todo, brief, profile, run)
+    except Exception as e:
+        log.warning("enrich_thin failed: %s", e)
+    return [s.id for s in todo]
 
 
 async def illustrate(deck: DeckContent, brief: Brief, style: str, run: SkillRun) -> None:
@@ -263,10 +445,14 @@ async def illustrate(deck: DeckContent, brief: Brief, style: str, run: SkillRun)
         log.warning("illustrator failed: %s", e)
         return
     got = raw.get("prompts") if isinstance(raw, dict) else None
+    qs = raw.get("queries") if isinstance(raw, dict) else None
     for s in need:
         p = _s((got or {}).get(s.id), 400)
         if len(p.split()) >= 5:
             s.image_prompt = p
+        q = _s((qs or {}).get(s.id), 60)
+        if q:
+            s.image_query = q
 
 
 def _scene(s: ContentSlide) -> str:
@@ -348,7 +534,7 @@ async def extend_deck(deck: DeckContent, n: int, brief: Brief, profile: Template
     except Exception as e:      # колода без добора лучше, чем упавшая задача
         log.warning("deck_extender failed: %s", e)
         return
-    source_nums = _nums(" ".join([brief.topic, brief.details, brief.audience]))
+    source_nums = _nums(" ".join([brief.topic, brief.details, brief.audience, brief.source_text]))
     new = []
     for s in (raw.get("slides") if isinstance(raw, dict) else None) or []:
         sl = norm_slide(s, source_nums, profile, 0)

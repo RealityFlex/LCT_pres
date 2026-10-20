@@ -1,0 +1,10 @@
+id: ink-gold-finance
+name: Чернила и золото
+category: finance
+mood: сдержанный, точный, дорогой
+description: Белый фон, графитовый структурный цвет и золотой акцент, заголовки с засечками. Финансы, инвесторы, отчётность.
+generator: editorial
+palette: {bg: FFFFFF, surface: F6F5F1, primary: 1F2329, secondary: 5B6770, accent: B08A3E, text: 1F2329,
+          muted: 666D75, rule: E2DFD7, dark_bg: 1C1F24, dark_text: F4F1EA}
+fonts: {heading: PT Serif, body: PT Sans, mono: IBM Plex Mono}
+chrome: {motif: frame, title_size: 28, kicker_spacing: 2.2}

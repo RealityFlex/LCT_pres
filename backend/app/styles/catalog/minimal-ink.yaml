@@ -1,0 +1,10 @@
+id: minimal-ink
+name: Минимализм
+category: work
+mood: чистый, современный, без украшений
+description: Белый фон, чёрный текст и один синий акцент, светлые разделы. Рабочие встречи, статусы, внутренние обзоры.
+generator: minimal
+palette: {bg: FFFFFF, surface: F5F6F8, primary: 111111, secondary: 6B7280, accent: 2F6BFF, text: 111111,
+          muted: 6B7280, rule: E5E7EB, dark_bg: 111111, dark_text: FFFFFF}
+fonts: {heading: Inter, body: Inter, mono: IBM Plex Mono}
+chrome: {motif: none, title_size: 27, dark_sections: false, kicker_spacing: 1.2, cover: light, card_fill: false}

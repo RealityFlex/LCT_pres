@@ -398,10 +398,12 @@ class DeckBuilder:
         nid = self._nid()
         w = int((el.line_w or 1) * 12700)
         tail = '<a:tailEnd type="triangle" w="med" len="med"/>' if el.arrow else ""
+        dash = '<a:prstDash val="dash"/>' if el.dash else ""
+        flips = (' flipH="1"' if el.flip_h else "") + (' flipV="1"' if el.flip_v else "")
         return _xml(f'<p:cxnSp {NSDECL}><p:nvCxnSpPr><p:cNvPr id="{nid}" name="{el.role or "line"}|{el.id}"/><p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr>'
-                    f'<p:spPr><a:xfrm><a:off x="{b.x}" y="{b.y}"/><a:ext cx="{max(0, b.w)}" cy="{max(0, b.h)}"/></a:xfrm>'
+                    f'<p:spPr><a:xfrm{flips}><a:off x="{b.x}" y="{b.y}"/><a:ext cx="{max(0, b.w)}" cy="{max(0, b.h)}"/></a:xfrm>'
                     f'<a:prstGeom prst="line"><a:avLst/></a:prstGeom>'
-                    f'<a:ln w="{w}" cap="rnd">{_solid(el.line or "000000")}<a:round/>{tail}</a:ln></p:spPr></p:cxnSp>')
+                    f'<a:ln w="{w}" cap="rnd">{_solid(el.line or "000000")}{dash}<a:round/>{tail}</a:ln></p:spPr></p:cxnSp>')
 
     # ---------------------------------------------------------------- image
     def _image(self, slide, el: El):
@@ -432,20 +434,76 @@ class DeckBuilder:
                 etree.SubElement(av, qn("a:gd"), name="adj", fmla=f"val {adj}")
 
     # ---------------------------------------------------------------- chart
+    @staticmethod
+    def _axis_title(axis, text: str, font: str, fs: float, color: str):
+        if not text:
+            return
+        axis.has_title = True
+        axis.axis_title.text_frame.text = text
+        r = axis.axis_title.text_frame.paragraphs[0].runs[0]
+        r.font.size = Pt(max(7, fs - 1))
+        r.font.bold = False
+        r.font.color.rgb = RGBColor.from_string(color)
+        r.font.name = font
+
+    @staticmethod
+    def _no_label_skip(axis):
+        """<c:tickLblSkip val="1"/> — по схеме после lblAlgn/lblOffset, до tickMarkSkip/noMultiLvlLbl."""
+        ax = axis._element
+        for old in ax.findall(qn("c:tickLblSkip")):
+            ax.remove(old)
+        el = ax.makeelement(qn("c:tickLblSkip"), {"val": "1"})
+        after = [ax.find(qn(f"c:{t}")) for t in ("tickMarkSkip", "noMultiLvlLbl", "extLst")]
+        nxt = next((x for x in after if x is not None), None)
+        if nxt is not None:
+            nxt.addprevious(el)
+        else:
+            ax.append(el)
+
+    @staticmethod
+    def _value_axis_style(va, c: dict, fs: float, tcol: str, fmt: str = ""):
+        va.has_major_gridlines = True
+        va.major_gridlines.format.line.color.rgb = RGBColor.from_string(c.get("grid_color", "DDDDDD"))
+        va.major_gridlines.format.line.width = Pt(0.5)
+        va.format.line.fill.background()
+        va.tick_labels.font.size = Pt(max(7, fs - 1))
+        va.tick_labels.font.color.rgb = RGBColor.from_string(tcol)
+        if fmt:
+            va.tick_labels.number_format = fmt
+            va.tick_labels.number_format_is_linked = False
+
+    @staticmethod
+    def _bounds(va, lo, hi):
+        if lo is not None:
+            va.minimum_scale = float(lo)
+        if hi is not None:
+            va.maximum_scale = float(hi)
+
+    @staticmethod
+    def _on_fill(hexv: str) -> str:
+        """Цвет подписи поверх заливки: белый на тёмном, тёмный на светлом."""
+        r, g, b = (int(hexv[i:i + 2], 16) for i in (0, 2, 4))
+        return "FFFFFF" if 0.299 * r + 0.587 * g + 0.114 * b < 150 else "222222"
+
     def _chart(self, slide, el: El):
         c = el.chart or {}
         b = el.box
         typ = c.get("type", "column")
+        if typ == "scatter":
+            return self._scatter(slide, el)
         cd = CategoryChartData()
         cats = [str(x) for x in c.get("categories", [])]
         cd.categories = cats
-        series = c.get("series", [])[:5]
+        stacked = typ in ("stacked_column", "stacked_bar")
+        series = c.get("series", [])[:8 if stacked else 5]
         for s in series:
             vals = list(s.get("values", []))[: len(cats)]
             vals += [0] * (len(cats) - len(vals))
             cd.add_series(s.get("name") or "Ряд", vals)
         xl = {"column": XL_CHART_TYPE.COLUMN_CLUSTERED, "bar": XL_CHART_TYPE.BAR_CLUSTERED,
-              "line": XL_CHART_TYPE.LINE_MARKERS, "pie": XL_CHART_TYPE.PIE, "doughnut": XL_CHART_TYPE.DOUGHNUT}[typ]
+              "stacked_column": XL_CHART_TYPE.COLUMN_STACKED, "stacked_bar": XL_CHART_TYPE.BAR_STACKED,
+              "line": XL_CHART_TYPE.LINE_MARKERS, "pie": XL_CHART_TYPE.PIE, "doughnut": XL_CHART_TYPE.DOUGHNUT}.get(
+                  typ, XL_CHART_TYPE.COLUMN_CLUSTERED)
         gf = slide.shapes.add_chart(xl, Emu(b.x), Emu(b.y), Emu(b.w), Emu(b.h), cd)
         ch = gf.chart
         colors = c.get("colors") or ["0077FF"]
@@ -469,6 +527,9 @@ class DeckBuilder:
             dl = plot.data_labels
             dl.show_percentage = typ == "pie"
             dl.show_value = typ != "pie"
+            if c.get("number_format") and typ != "pie":
+                dl.number_format = c["number_format"]
+                dl.number_format_is_linked = False
             dl.font.size = Pt(fs)
             dl.font.bold = True
             ch.has_legend = True
@@ -496,45 +557,131 @@ class DeckBuilder:
                     ser.format.fill.solid()
                     ser.format.fill.fore_color.rgb = col
                     ser.format.line.fill.background()
-            if typ in ("column", "bar"):
-                plot.gap_width = 70 if not multi else 90
-                plot.overlap = -10 if multi else 0
-            plot.has_data_labels = True
-            dl = plot.data_labels
-            dl.font.size = Pt(max(7, fs - 1))
-            dl.font.color.rgb = RGBColor.from_string(c.get("label_color", tcol))
-            dl.number_format = "General"
-            dl.number_format_is_linked = False
-            try:
-                dl.position = XL_LABEL_POSITION.OUTSIDE_END if typ != "line" else XL_LABEL_POSITION.ABOVE
-            except Exception:
-                pass
+                    if stacked:     # тонкая граница цвета фона разделяет сегменты
+                        ser.format.line.color.rgb = RGBColor.from_string(c.get("bg", "FFFFFF"))
+                        ser.format.line.width = Pt(0.75)
+            if typ in ("column", "bar") or stacked:
+                plot.gap_width = c["gap"] if c.get("gap") is not None else 70 if not multi else 90
+                plot.overlap = 100 if stacked else -10 if multi else 0
+                hl = [i for i in (c.get("highlight") or []) if 0 <= i < len(cats)]
+                if hl and not multi and not stacked:
+                    # главное (лидер, пик, худшая колонка) — основным цветом, остальное — приглушённым
+                    ser = plot.series[0]
+                    for j in range(len(cats)):
+                        pt = ser.points[j]
+                        pt.format.fill.solid()
+                        pt.format.fill.fore_color.rgb = RGBColor.from_string(colors[0] if j in hl else c.get("muted", "C8CCD6"))
+            plot.has_data_labels = bool(c.get("labels", True))      # на длинных рядах подписи только мешают
+            if plot.has_data_labels:
+                dl = plot.data_labels
+                dl.font.size = Pt(max(7, fs - 1))
+                dl.font.color.rgb = RGBColor.from_string(c.get("label_color", tcol))
+                dl.number_format = c.get("number_format") or "General"
+                dl.number_format_is_linked = False
+                try:
+                    # у накопительных — только внутри сегмента (OUTSIDE_END у них ломает файл)
+                    dl.position = (XL_LABEL_POSITION.CENTER if stacked else
+                                   XL_LABEL_POSITION.ABOVE if typ == "line" else XL_LABEL_POSITION.OUTSIDE_END)
+                except Exception:
+                    pass
+                if stacked:
+                    for i, ser in enumerate(plot.series):
+                        sdl = ser.data_labels
+                        sdl.font.size = Pt(max(7, fs - 1))
+                        sdl.font.color.rgb = RGBColor.from_string(self._on_fill(colors[i % len(colors)]))
+                        sdl.number_format = c.get("number_format") or "General"
+                        sdl.number_format_is_linked = False
+                        sdl.position = XL_LABEL_POSITION.CENTER
+                        sdl.show_value = True
             va = ch.value_axis
-            va.has_major_gridlines = True
-            va.major_gridlines.format.line.color.rgb = RGBColor.from_string(c.get("grid_color", "DDDDDD"))
-            va.major_gridlines.format.line.width = Pt(0.5)
-            va.format.line.fill.background()
-            va.tick_labels.font.size = Pt(max(7, fs - 1))
-            va.tick_labels.font.color.rgb = RGBColor.from_string(tcol)
-            if c.get("unit"):
-                va.has_title = True
-                va.axis_title.text_frame.text = c["unit"]
-                r = va.axis_title.text_frame.paragraphs[0].runs[0]
-                r.font.size = Pt(max(7, fs - 1))
-                r.font.bold = False
-                r.font.color.rgb = RGBColor.from_string(tcol)
-                r.font.name = font
+            self._value_axis_style(va, c, fs, tcol, c.get("number_format", ""))
+            self._bounds(va, c.get("y_min"), c.get("y_max"))
+            self._axis_title(va, c.get("y_title") or c.get("unit", ""), font, fs, tcol)
             ca = ch.category_axis
             ca.tick_labels.font.size = Pt(fs)
             ca.tick_labels.font.color.rgb = RGBColor.from_string(tcol)
             ca.format.line.color.rgb = RGBColor.from_string(c.get("grid_color", "DDDDDD"))
             ca.has_major_gridlines = False
+            if not (typ == "stacked_bar" and len(cats) == 1):
+                self._axis_title(ca, c.get("x_title", ""), font, fs, tcol)
+            if typ in ("bar", "stacked_bar") and len(cats) > 1:
+                # у полос подпись каждой категории обязательна: на невысокой диаграмме PowerPoint
+                # иначе пропускает через одну — кегль подгоняем под шаг строки и запрещаем пропуск
+                row_pt = el.box.h / 12700 * 0.78 / len(cats)
+                ca.tick_labels.font.size = Pt(max(7, min(fs, round(row_pt * 0.62, 1))))
+                self._no_label_skip(ca)
             ch.has_legend = multi
             if multi:
                 ch.legend.position = XL_LEGEND_POSITION.TOP
                 ch.legend.include_in_layout = False
                 ch.legend.font.size = Pt(fs)
-        # прозрачный фон области диаграммы
+        self._chart_bg(ch)
+        gf.name = f"chart|{el.id}"
+
+    def _scatter(self, slide, el: El):
+        """Рассеяние: точки наблюдений и линия тренда (МНК) второй серией."""
+        from pptx.chart.data import XyChartData
+        from pptx.enum.chart import XL_MARKER_STYLE
+        c = el.chart or {}
+        b = el.box
+        p = c.get("points") or {}
+        cd = XyChartData()
+        s1 = cd.add_series(c.get("y_title") or "Наблюдения")
+        for x, y in zip(p.get("x", []), p.get("y", [])):
+            s1.add_data_point(x, y)
+        tr = c.get("trend") or []
+        if len(tr) == 2:
+            s2 = cd.add_series("Линейный тренд")
+            for x, y in tr:
+                s2.add_data_point(x, y)
+        gf = slide.shapes.add_chart(XL_CHART_TYPE.XY_SCATTER, Emu(b.x), Emu(b.y), Emu(b.w), Emu(b.h), cd)
+        ch = gf.chart
+        colors = c.get("colors") or ["0077FF"]
+        font = c.get("font", "Arial")
+        fs = c.get("font_size", 11)
+        tcol = c.get("text_color", "333333")
+        ch.font.name = font
+        ch.font.size = Pt(fs)
+        ch.font.color.rgb = RGBColor.from_string(tcol)
+        ch.has_title = False
+        plot = ch.plots[0]
+        # у рассеяния подписей значений нет по умолчанию (has_data_labels у scatterChart в python-pptx не работает)
+        pts = plot.series[0]
+        pts.format.line.fill.background()
+        pts.marker.style = XL_MARKER_STYLE.CIRCLE
+        pts.marker.size = 6 if len(p.get("x", [])) <= 150 else 5
+        pts.marker.format.fill.solid()
+        pts.marker.format.fill.fore_color.rgb = RGBColor.from_string(colors[0])
+        pts.marker.format.line.fill.background()
+        # полупрозрачные точки: на плотных участках видна концентрация
+        clr = first(pts.marker.format.fill._xPr, ".//a:solidFill/a:srgbClr")
+        if clr is not None:
+            etree.SubElement(clr, qn("a:alpha"), val="55000")
+        if len(plot.series) > 1:
+            t = plot.series[1]
+            t.marker.style = XL_MARKER_STYLE.NONE
+            t.format.line.color.rgb = RGBColor.from_string(c.get("trend_color") or (colors[1] if len(colors) > 1 else tcol))
+            t.format.line.width = Pt(2.25)
+            t.smooth = False
+        xa, ya = ch.category_axis, ch.value_axis
+        for ax, fmt in ((xa, c.get("x_format", "")), (ya, c.get("y_format", ""))):
+            self._value_axis_style(ax, c, fs, tcol, fmt)
+        xa.has_major_gridlines = False
+        self._bounds(ya, c.get("y_min"), c.get("y_max"))
+        xa.format.line.color.rgb = RGBColor.from_string(c.get("grid_color", "DDDDDD"))
+        self._axis_title(xa, c.get("x_title", ""), font, fs, tcol)
+        self._axis_title(ya, c.get("y_title", ""), font, fs, tcol)
+        ch.has_legend = len(plot.series) > 1
+        if ch.has_legend:
+            ch.legend.position = XL_LEGEND_POSITION.TOP
+            ch.legend.include_in_layout = False
+            ch.legend.font.size = Pt(fs)
+        self._chart_bg(ch)
+        gf.name = f"chart|{el.id}"
+
+    @staticmethod
+    def _chart_bg(ch):
+        """Прозрачный фон области диаграммы и области построения."""
         cs = ch._chartSpace
         for parent_path in ("c:chart/c:plotArea", "."):
             parent = first(cs, parent_path) if parent_path != "." else cs
@@ -559,7 +706,6 @@ class DeckBuilder:
             etree.SubElement(sppr, qn("a:noFill"))
             ln = etree.SubElement(sppr, qn("a:ln"))
             etree.SubElement(ln, qn("a:noFill"))
-        gf.name = f"chart|{el.id}"
 
     # ---------------------------------------------------------------- table
     def _table(self, slide, el: El):

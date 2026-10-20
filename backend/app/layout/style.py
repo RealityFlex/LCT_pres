@@ -79,7 +79,23 @@ class Look:
         self.heading_max = max(self.heading_size, self.snap_down(self.body_size * 1.7))
         self.gap = profile.gap
         self.title_caps = ty.title_caps
-        self.chart_colors = [c for c in pal.chart] or [pal.primary] + pal.accents
+        self.chart_colors = self._chart_colors(pal)
+
+    def _chart_colors(self, pal) -> list[str]:
+        """Цвета серий, различимые на фоне холста: цвет почти как фон (тёмная серия на тёмном слайде) заменяется
+        акцентом шаблона, а не исчезает с диаграммы."""
+        base = [c for c in pal.chart] or [pal.primary] + pal.accents
+        spare = [c for c in [pal.primary] + pal.accents + [self.accent, self.accent2, self.heading, self.muted]
+                 if c and contrast(c, self.bg) >= 2.0]
+        out: list[str] = []
+        for c in base:
+            if contrast(c, self.bg) < 1.6:
+                c = next((x for x in spare if x not in out), None) or mix(self.bg, self.fg, 0.6 - 0.12 * len(out))
+            if c not in out:
+                out.append(c)
+        while len(out) < 3:
+            out.append(mix(out[0] if out else self.fg, self.bg, 0.3 + 0.2 * (len(out) - 1)))
+        return out
 
     # ---------------------------------------------------------------- sizes
     def snap_down(self, size: float) -> float:

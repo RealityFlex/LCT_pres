@@ -326,8 +326,11 @@ def test_materials_extract_text_and_pptx(tmp_path):
     assert "48 млн" in extract("old.pptx", buf.getvalue())
     with pytest.raises(ValueError):
         extract("photo.png", b"\x89PNG")
+    # длинные материалы больше не режутся до 30 тыс.: их целиком читает planning/digest.py; общий лимит — 200 тыс.
     both = combine([("a.md", "x" * 40_000), ("b.md", "y")])
-    assert "a.md" in both and "b.md" not in both and len(both) < 31_000   # общий лимит 30 тыс. знаков
+    assert "a.md" in both and "b.md" in both and len(both) > 40_000
+    huge = combine([("a.md", "x" * 210_000), ("b.md", "y")])
+    assert "b.md" not in huge and len(huge) < 201_000
 
 
 def test_empty_image_slide_becomes_quote_and_image_moves():

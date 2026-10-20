@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360">
+  <g transform="translate(180 180) rotate(30)">
+    <ellipse rx="84" ry="116" fill="#C8582A"/>
+    <path d="M -10 -105 C 30 -50, -30 50, 10 105" fill="none" stroke="#FFFFFF" stroke-width="15" stroke-linecap="round"/>
+  </g>
+  <text x="330" y="245" font-family="Manrope, Arial, sans-serif" font-weight="700" font-size="190" fill="#1F1A17">ЗЕРНО</text>
+</svg>

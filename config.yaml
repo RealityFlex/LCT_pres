@@ -10,14 +10,26 @@ llm:
   fallback_model: gpt://{folder}/gpt-oss-20b/latest
   temperature: 0.3
   timeout_s: 90
-  max_concurrency: 8
+  max_concurrency: 4          # Yandex Cloud: не больше 5 одновременных сессий на каталог
   disable_thinking: true
 
 images:
   provider: gigachat          # gigachat | none
   model: GigaChat
   max_per_deck: 4
+  # откуда брать картинки по умолчанию задаёт бриф (image_source): auto — свободное фото Wikimedia Commons,
+  # если Qwen-vision его одобрил, иначе генерация; web — только фото; generate — только генерация
   timeout_s: 90
+
+# поиск фактов в интернете до планирования (галочка в брифе). wikipedia — бесплатно, без ключей;
+# yandex — Яндекс Поиск API тем же ключом, что и LLM (платно: ≈5 ₽ за генеративный ответ)
+search:
+  provider: wikipedia          # wikipedia | yandex | none
+  wiki_lang: ru
+  queries: 4                   # запросов на колоду
+  max_articles: 4              # статей Википедии читается целиком
+  timeout_s: 30
+  user_agent: "LekaloBot/1.0 (https://lct.levandrovskiy.ru; presentation generator) httpx"
 
 render:
   soffice_path: null           # null = автопоиск
@@ -28,8 +40,14 @@ pipeline:
   default_slide_count: auto    # auto | число
   min_slides: 8
   max_slides: 16
-  deadline_s: 300
+  deadline_s: 300             # обычный режим: три колоды с аудитом — не дольше 5 минут
+  research_s: 40              # потолок поиска фактов в Википедии (обычный режим)
+  designer_s: 200             # к этой секунде дизайнер варианта B заканчивает: дальше — лучшая попытка или рецепт
   contextual_audit: true
+  extended:                   # режим extended thinking: без лимита времени
+    deadline_s: 3600
+    designer_attempts: 4
+    fix_rounds: 2             # круги автоисправления замечаний оформления с повторной проверкой
 
 # Три варианта вёрстки. Ось различий — «плотность и способ визуализации»
 # (обоснование — docs/ARCHITECTURE.md, раздел «Три варианта»).
@@ -39,9 +57,9 @@ variants:
     strategy: faithful
     description: Максимальная близость к шаблону, сбалансированная плотность, паттерны из примеров шаблона.
   - id: B
-    name: Визуальный
+    name: Дизайнерский
     strategy: visual
-    description: Меньше текста, больше визуализации — крупные цифры, диаграммы, иконки, изображения.
+    description: Каждый содержательный слайд компонует модель по дизайн-системе — свои схемы, шевроны, сетки и акценты; затем проверяет себя по скриншоту.
   - id: C
     name: Компактный
     strategy: dense
@@ -61,12 +79,43 @@ audit:
 # Активные версии скиллов/агентов (промптов). Файлы: backend/skills/<name>/<version>.yaml
 skills:
   template_analyst: v1        # VLM: стиль, тон, стиль иллюстраций (нарратив считается детерминированно)
-  deck_planner: v7
+  deck_planner: v8
   deck_extender: v1         # добор слайдов до объёма 10–15, если сценарист вернул меньше
   speaker_notes: v1         # текст спикера к слайдам без заметок (под длительность выступления)
-  illustrator: v1           # промпты иллюстраций по теме колоды и тезисам слайда
+  illustrator: v2           # промпты иллюстраций и запросы фото по теме колоды и тезисам слайда
+  web_researcher: v1        # поисковые запросы по теме (Википедия / поисковик)
+  wiki_picker: v1           # отбор статей Википедии из выдачи поиска
+  wiki_reader: v1           # факты из статьи Википедии (числа — дословно)
+  photo_picker: v1          # VLM: выбор фото для слайда из найденных кандидатов
   text_condenser: v1
   slide_auditor: v1
   deck_auditor: v2
   fixer: v1
+  style_picker: v2          # три подходящих стиля по теме; берётся не повторяющий недавние колоды
+  material_digest: v1       # конспект фрагмента длинного материала (документ читается целиком)
+  material_merge: v1        # сведение конспектов в одну выжимку
+  clarifier: v1             # уточняющие вопросы перед генерацией
+  slide_writer: v1          # дописывает слайды после правки плана и по просьбе в чате
+  slide_designer: v1        # послайдовый дизайн: модель компонует слайд из примитивов стиля
+  slide_critic: v1          # самопроверка послайдового дизайна по скриншоту
+  data_analyst: v2          # выводы по датасетам + «и что?»: почему важно и что из этого следует
+  data_story: v1            # сюжет колоды по данным: главная мысль, порядок, выводы, рекомендации
 # промпты иллюстраций пишет deck_planner (поле image_prompt), стиль — из профиля шаблона
+
+# встроенные стили (генерация без корпоративного шаблона): backend/app/styles/catalog/*.yaml
+styles:
+  default: auto              # auto — подобрать по теме
+
+# длинные материалы: больше digest_over_chars — читаются целиком по кускам и сводятся в выжимку
+materials:
+  max_total_chars: 200000
+  digest_over_chars: 25000
+  chunk_chars: 8000
+  digest_chars: 12000
+
+# послайдовый дизайн (как Kimi): модель компонует слайды варианта сама, критик проверяет по скриншоту
+freeform:
+  enabled: true
+  variants: [B]
+  critic: true
+  attempts: 3              # попыток модели на слайд (с замечаниями кода); рецепт — только если ни одна не чистая

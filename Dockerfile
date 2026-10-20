@@ -6,8 +6,10 @@ FROM node:20-bookworm-slim AS web
 WORKDIR /web
 # lock-файл собран на Windows: из-за бага npm (npm/cli#4828) нативные модули rolldown/tailwind/lightningcss
 # для Linux по нему не ставятся — в контейнере разрешаем зависимости заново по диапазонам package.json
+# --legacy-peer-deps: свежее разрешение зависимостей npm 10 падает на peer-зависимостях
+# («Cannot read properties of null (reading 'edgesOut')»), со старым алгоритмом ставится и собирается
 COPY frontend/package.json ./
-RUN npm install --no-audit --no-fund
+RUN npm install --no-audit --no-fund --legacy-peer-deps
 COPY frontend/ ./
 RUN npm run build
 

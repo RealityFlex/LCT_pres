@@ -25,9 +25,9 @@ export function AuditSummary({ report }: { report: AuditReport | null }) {
   const R = 30;
   const C = 2 * Math.PI * R;
   const segs = [
-    { v: e, c: "var(--red)" },
-    { v: w, c: "var(--orange)" },
-    { v: inf, c: "var(--accent)" },
+    { v: e, c: "var(--orange)" },
+    { v: w, c: "var(--accent)" },
+    { v: inf, c: "var(--text-4)" },
   ];
   let off = 0;
   return (
@@ -52,9 +52,9 @@ export function AuditSummary({ report }: { report: AuditReport | null }) {
         <div className="font-display text-[26px] font-semibold leading-none">{is.length}</div>
         <div className="mt-1 text-[12px] text-fg-3">замечаний · {det} по оформлению · {is.length - det} по смыслу</div>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <Badge tone="bad" dot>{e}</Badge>
-          <Badge tone="warn" dot>{w}</Badge>
-          <Badge tone="accent" dot>{inf}</Badge>
+          <Badge tone="warn" dot>{e}</Badge>
+          <Badge tone="accent" dot>{w}</Badge>
+          <Badge tone="neutral" dot>{inf}</Badge>
         </div>
       </div>
     </div>

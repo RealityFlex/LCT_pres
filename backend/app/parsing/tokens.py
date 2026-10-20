@@ -72,6 +72,9 @@ def build_palette(an: TemplateAnalyzer, slides: list[SlideAnalysis], bg_samples:
     text_light = pick(lambda c: luminance(c["hex"]) > 0.85 and c["src"]["text"] > 0) or "FFFFFF"
     muted_dark = pick(lambda c: 0.08 < luminance(c["hex"]) < 0.4 and saturation(c["hex"]) < 0.25 and c["src"]["text"] > 0)
     saturated = [c for c in clusters if saturation(c["hex"]) > 0.3 and 0.03 < luminance(c["hex"]) < 0.75]
+    if not saturated:
+        # тёмный шаблон с неоновым акцентом (лайм, бирюза): яркий насыщенный цвет — тоже фирменный
+        saturated = [c for c in clusters if saturation(c["hex"]) > 0.35 and luminance(c["hex"]) >= 0.75]
     # основной акцент — насыщенный цвет, заметный и в заливках, и в тексте
     saturated.sort(key=lambda c: -(c["w"] + 0.5 * c["src"]["text"] + 2 * c["src"]["chart"]))
     primary = saturated[0]["hex"] if saturated else (bg_dark or "0077FF")
@@ -334,14 +337,21 @@ def build_card_styles(an: TemplateAnalyzer, slides: list[SlideAnalysis], palette
     return res
 
 
+def solid_fill(f: Optional[str]) -> Optional[str]:
+    """Заливка ячейки как сплошной цвет: «grad:HEX» (градиент) → его средний цвет; картинка — без заливки."""
+    if not f or f == "picture":
+        return None
+    return f[5:] if f.startswith("grad:") else f
+
+
 def build_table_style(slides: list[SlideAnalysis], palette: Palette, body: TextStyle) -> TableStyle:
     for sa in slides:
         for s in sa.shapes:
             if s.table and s.table["rows"] >= 2:
                 t = s.table
-                hf = t["fills"][0][0] if t["fills"] and t["fills"][0] else None
-                bf = t["fills"][1][0] if len(t["fills"]) > 1 else None
-                af = t["fills"][2][0] if len(t["fills"]) > 2 else None
+                hf = solid_fill(t["fills"][0][0] if t["fills"] and t["fills"][0] else None)
+                bf = solid_fill(t["fills"][1][0] if len(t["fills"]) > 1 else None)
+                af = solid_fill(t["fills"][2][0] if len(t["fills"]) > 2 else None)
                 ht = next((c for c in t["text_colors"][0] if c), None) or (
                     palette.text_light if hf and luminance(hf) < 0.4 else palette.text_dark)
                 bt = next((c for row in t["text_colors"][1:] for c in row if c), None) or palette.text_dark

@@ -1,0 +1,10 @@
+id: tech-violet
+name: Технологичный фиолетовый
+category: promo
+mood: технологичный, свежий, цифровой
+description: Светлый холодный фон, тёмно-фиолетовый и бирюзовый акцент. IT-продукты, платформы, хакатоны.
+generator: editorial
+palette: {bg: F7F7FB, surface: EFEEF8, primary: 2A1F5C, secondary: 6E59E6, accent: 15A7BF, text: 1C1830,
+          muted: 646179, rule: E1DFEE, dark_bg: 221A4D, dark_text: FFFFFF}
+fonts: {heading: Rubik, body: Inter, mono: IBM Plex Mono}
+chrome: {motif: squares, title_size: 27}

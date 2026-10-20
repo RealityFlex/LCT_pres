@@ -235,7 +235,7 @@ def build_patterns(an: TemplateAnalyzer, slides: list[SlideAnalysis], pngs: list
             score += 0.5 * ("heading" in info.roles) + 0.5 * ("body" in info.roles)
             score -= 0.25 * abs(info.count - 4)
         c = Canvas(id=f"p{sa.index}", source_slide=sa.index, kind="pattern", layout=sa.layout,
-                   keep_sids=[it.sid for it in sa.items], slots=[sl.model_copy() for sl in sa.slots if sl.role in ("title", "kicker", "pagenum")],
+                   keep_sids=[it.sid for it in sa.items], slots=[sl.model_copy() for sl in sa.slots if sl.role in ("title", "kicker", "pagenum", "footer")],
                    title_label_sid=sa.label.sid if sa.label else None, content_box=cb, bg=bg, dark=dark,
                    score=round(score, 2), preview=png, pattern=info,
                    title_max_w=_title_max_w(an, sa, lay_cache, gap))

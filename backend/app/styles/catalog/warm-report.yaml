@@ -1,0 +1,10 @@
+id: warm-report
+name: Тёплый отчёт
+category: work
+mood: тёплый, человечный, внятный
+description: Светлый тёплый фон, бордово-коричневый и охра. Отчёты команды, итоги года, продуктовые обзоры.
+generator: editorial
+palette: {bg: FBF8F3, surface: F4EDE3, primary: 7A2E1D, secondary: A5674A, accent: D29A2E, text: 2A2420,
+          muted: 76695F, rule: E4D9CC, dark_bg: 5E2417, dark_text: FBF3E8}
+fonts: {heading: Montserrat, body: Montserrat, mono: IBM Plex Mono}
+chrome: {motif: circle, title_size: 26}

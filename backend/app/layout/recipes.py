@@ -48,6 +48,36 @@ def _usable_slot_fonts(canvas: Canvas, look: Look) -> Canvas:
     return c
 
 
+GENERIC_LABELS = {"Почему это важно", "Что из этого следует", "Что сделать", "Что проверить", "Чего избегать", "Решение"}
+
+
+def then_label(t: str) -> str:
+    """Подпись блока «что следует» по смыслу первого глагола: проверить / сделать / не делать / решение."""
+    w = (t or "").strip().lower()
+    if w.startswith(("не ", "избег", "отказ")):
+        return "Чего избегать"
+    if w.startswith(("провер", "изуч", "оцен", "протест", "тест", "уточн", "сравн", "выясн", "проанализ", "анализ")):
+        return "Что проверить"
+    if w.startswith(("утверд", "принять", "решить", "выбрать", "согласов")):
+        return "Решение"
+    if w.split()[:1] and w.split()[0].endswith(("ть", "ти", "чь", "ться")):
+        return "Что сделать"
+    return "Что из этого следует"
+
+
+def chart_payload(ch, look: Look) -> dict:
+    """Диаграмма для сборщика: данные ChartSpec + оформление из Look (шрифт, палитра, сетка, приглушённый цвет)."""
+    colors = look.chart_colors
+    d = ch.model_dump(exclude={"viz"})
+    d["series"] = d["series"][:8 if ch.type.startswith("stacked") else 5]
+    d.update({"colors": colors, "font": look.body_font, "bg": look.bg,
+              "muted": mix(look.bg, colors[0] if colors else look.fg, 0.45),
+              "font_size": look.snap_down(max(look.min_size, look.body_size * 0.9)),
+              "text_color": look.fg, "grid_color": mix(look.bg, look.fg, 0.15), "label_color": look.fg,
+              "trend_color": look.fg})
+    return d
+
+
 def _split_title(t: str) -> tuple[str, str]:
     for sep in (": ", " — ", " – ", ". ", ", "):
         if sep in t:
@@ -88,6 +118,58 @@ class Composer:
 
     def pad(self, look: Look) -> int:
         return int(max(0.1 * INCH * look.k, min(0.26 * INCH * look.k, 0.7 * look.gap)))
+
+    def takeaway(self, s: ContentSlide, look: Look, cb: Box, lay: SlideLayout) -> Box:
+        """«И что?» под контентом: почему это важно и что из этого следует. Возвращает оставшуюся область.
+
+        Основному контенту (диаграмме, цифрам) нужна высота: если область низкая (компактный шаблон), блок
+        сжимается до одной строки «Что из этого следует», а если не помещается и она — остаётся в заметках."""
+        parts = [(lab, txt) for lab, txt in ((s.why_head or "Почему это важно", s.why),
+                                             (s.then_head or then_label(s.then), s.then)) if txt]
+        if not parts:
+            return cb
+        g = look.gap
+        lab_size = look.snap_down(max(look.min_size, look.body_size * 0.85))
+        size = look.snap_down(max(look.min_size, look.body_size * 1.05))
+        need_main = max(int(0.3 * self.p.slide_h), int(0.55 * cb.h))     # минимум высоты основному контенту
+
+        def measure(ps, pad):
+            n = len(ps)
+            cw = (cb.w - 2 * pad - (n - 1) * 2 * g) // n
+            lh = int(tf.needed_height([("Ag", True)], cw, look.body_font, lab_size))
+            th = max(int(tf.needed_height([(t, False)], cw, look.body_font, size)) for _, t in ps)
+            return cw, lh, lh + int(0.25 * g) + th + 2 * pad
+        # обычная плашка → компактная (меньше отступы) → только «что из этого следует» → в заметки
+        full = self.pad(look)
+        for ps, pad in ((parts, full), (parts, int(0.55 * full)), (parts[-1:], int(0.55 * full))):
+            col_w, lab_h, h = measure(ps, pad)
+            if cb.h - h - g >= need_main:
+                parts = ps
+                break
+        else:
+            return cb                      # не помещается — «и что?» остаётся в заметках спикера
+        n = len(parts)
+        box = Box(x=cb.x, y=cb.y + cb.h - h, w=cb.w, h=h)
+        plate = mix(look.bg, look.accent, 0.09)
+        lay.elements.append(El(id=self._id("tk"), kind="shape", geom="roundRect", box=box, role="takeaway_bg",
+                               fill=plate, radius=int(0.08 * INCH * look.k)))
+        # подпись — фирменным цветом, затемнённым до читаемого контраста на плашке
+        lab_col = look.accent
+        for t in (0.0, 0.2, 0.35, 0.5, 0.65, 0.8):
+            lab_col = mix(look.accent, look.fg, t)
+            if contrast(lab_col, plate) >= 4.5:
+                break
+        ink = readable([look.fg], plate)
+        for i, (lab, txt) in enumerate(parts):
+            x = box.x + pad + i * (col_w + 2 * g)
+            # своя мысль модели — как есть (жирно), служебная подпись — капсом
+            lab_txt = lab if lab not in GENERIC_LABELS else lab.upper()
+            lay.elements.append(self.text(look, Box(x=x, y=box.y + pad, w=col_w, h=lab_h), self._paras([lab_txt]),
+                                          "label", look.body_font, lab_size, look.min_size, lab_col, bold=True, max_lines=1))
+            ty = box.y + pad + lab_h + int(0.25 * g)
+            lay.elements.append(self.text(look, Box(x=x, y=ty, w=col_w, h=max(1, box.y + box.h - pad - ty)),
+                                          self._paras([txt]), "body", look.body_font, size, look.min_size, ink))
+        return Box(x=cb.x, y=cb.y, w=cb.w, h=max(1, cb.h - h - g))
 
     # ================================================================= slots
     def fill_slots(self, spec: SlideSpec, canvas: Canvas, look: Look, lay: SlideLayout, number: int,
@@ -152,6 +234,12 @@ class Composer:
                 continue
             if sl.role == "pagenum":
                 lay.slots.append(SlotFill(role="pagenum", sid=sl.sid, text=str(number), color=_slot_color(sl, sl.style.size, look)))
+            elif sl.role == "footer":
+                t = extras.get("footer") or deck_title
+                if t:
+                    lay.slots.append(SlotFill(role="footer", sid=sl.sid, text=t[:90], color=_slot_color(sl, sl.style.size, look)))
+                else:
+                    lay.remove_sids.append(sl.sid)
             elif sl.role == "kicker":
                 k = s.kicker
                 if not k and canvas.kind == "section":
@@ -159,7 +247,7 @@ class Composer:
                 elif not k and canvas.kind == "closing":
                     k = "Итоги"
                 elif not k:
-                    k = s.section or ""
+                    k = s.section or extras.get("section_name", "")
                 if k:
                     lay.slots.append(SlotFill(role="kicker", sid=sl.sid, text=k.upper() if sl.style.caps or sl.text.isupper() else k,
                                               color=_slot_color(sl, sl.style.size, look)))
@@ -205,6 +293,16 @@ class Composer:
             new = next((sl.style.font for sl in canvas.slots if sl.sid == sf.sid), None)
             if new and new != orig_fonts.get(sf.sid):
                 sf.font = new
+        # источник данных: в шаблоне без слота подвала — мелкой строкой под контентом
+        note = extras.get("footer", "")
+        if note and not structural and canvas.kind != "pattern" and not any(sl.role == "footer" for sl in canvas.slots):
+            fs = look.snap_down(max(look.min_size, look.body_size * 0.72))
+            h = int(tf.needed_height([(note, False)], cb.w, look.body_font, fs)) + 45720
+            gap = int(0.35 * look.gap)
+            if cb.h > 4 * (h + gap):
+                cb = Box(x=cb.x, y=cb.y, w=cb.w, h=cb.h - h - gap)
+                lay.elements.append(self.text(look, Box(x=cb.x, y=cb.y + cb.h + gap, w=cb.w, h=h), self._paras([note[:140]]),
+                                              "caption", look.body_font, fs, look.min_size, look.muted, max_lines=1))
         return cb
 
     # ================================================================= entry
@@ -236,6 +334,8 @@ class Composer:
             lay.elements.append(el)
             off = el.box.h + int(0.9 * look.gap)
             cb = Box(x=cb.x, y=cb.y + off, w=cb.w, h=max(1, cb.h - off))
+        if (s.why or s.then) and spec.recipe not in ("quote", "section_synth", "image_text"):
+            cb = self.takeaway(s, look, cb, lay)
         fn = getattr(self, f"r_{spec.recipe}", None) or self.r_bullets
         fn(spec, look, cb, lay)
         return lay
@@ -304,11 +404,14 @@ class Composer:
         if best is None:
             best = (look.min_size, look.min_size, max_ch)
         hs, bs, need = best
-        fill_k = 0.85 if spec.opts.get("fill") else 0.62
+        fill_k = 0.85 if spec.opts.get("fill") else 0.78
         ch = int(min(max_ch, max(need, fill_k * max_ch if rows == 1 else need)))
         total_h = rows * ch + (rows - 1) * g
         y0 = cb.y + int((cb.h - total_h) * 0.25)
         accent_idx = spec.opts.get("accent_index")
+        # свободная высота карточки уходит в просвет между иконкой и текстом: заголовки всех карточек
+        # на одной линии, тексты у низа — без пустых нижних половин
+        spare = max(0, ch - need) if show_icon and rows == 1 else 0
         for i, it in enumerate(items):
             r, c = divmod(i, cols)
             cols_in_row = cols if r < rows - 1 or n % cols == 0 else n % cols
@@ -323,6 +426,8 @@ class Composer:
             if show_icon and it.icon:
                 lay.elements.extend(self._icon_badge(look, cc, Box(x=x + pad, y=yy, w=icon_h, h=icon_h), it.icon, card.id))
                 yy += icon_h + int(0.45 * look.gap)
+            if spare:
+                yy = y + pad + icon_h + int(0.45 * look.gap) + spare
             if show_num:
                 nh = tf.needed_height([(it.value or f"{i + 1:02d}", True)], inner_w, look.number_font, num_pref)
                 lay.elements.append(self.text(look, Box(x=x + pad, y=yy, w=inner_w, h=nh), self._paras([it.value or f"{i + 1:02d}"]),
@@ -453,6 +558,11 @@ class Composer:
     # ---------------------------------------------------------------- process
     def r_process(self, spec: SlideSpec, look: Look, cb: Box, lay: SlideLayout):
         items = self._items(spec.slide, 6)
+        # подпись шага, совпадающая с заголовком («Шаг 1» / «Шаг 1»), — дубль: оставляем подпись и текст
+        # (подпись по умолчанию — «Шаг N», см. ниже)
+        items = [it.model_copy(update={"head": ""}) if it.head and it.text
+                 and (it.value or f"Шаг {i + 1}").strip().lower() == it.head.strip().lower() else it
+                 for i, it in enumerate(items)]
         if not items:
             return self.r_quote(spec, look, cb, lay)
         n = len(items)
@@ -630,19 +740,17 @@ class Composer:
     # ---------------------------------------------------------------- chart
     def r_chart(self, spec: SlideSpec, look: Look, cb: Box, lay: SlideLayout):
         s = spec.slide
-        if not s.chart or not s.chart.series or not s.chart.categories:
+        ok = s.chart and ((s.chart.series and s.chart.categories) or (s.chart.type == "scatter" and s.chart.points.get("x")))
+        if not ok:
             return self.r_stats(spec, look, cb, lay) if any(it.value for it in s.items) else self.r_cards(spec, look, cb, lay)
         side = self._items(s, 3)
+        if side:
+            # одна цифра с подписью — ~ крупный кегль + две строки подписи; лишние на низкой области не влезут
+            one = look.number_size * 12700 * 1.15 + look.body_size * 12700 * 1.3 * 2 + look.gap
+            side = side[:max(1, min(len(side), int(cb.h // max(1, one))))]
         chart_w = int(cb.w * (0.62 if side else 1.0))
-        ch = s.chart
-        colors = look.chart_colors
         lay.elements.append(El(id=self._id("ch"), kind="chart", box=Box(x=cb.x, y=cb.y, w=chart_w, h=cb.h), role="chart",
-                               chart={"type": ch.type, "categories": ch.categories,
-                                      "series": [se.model_dump() for se in ch.series][:5], "unit": ch.unit,
-                                      "title": ch.title, "colors": colors, "font": look.body_font,
-                                      "font_size": look.snap_down(max(look.min_size, look.body_size * 0.9)),
-                                      "text_color": look.fg, "grid_color": mix(look.bg, look.fg, 0.15),
-                                      "label_color": look.fg}))
+                               chart=chart_payload(s.chart, look)))
         if side:
             x = cb.x + chart_w + look.gap * 2
             sub = Box(x=x, y=cb.y, w=cb.x2 - x, h=cb.h)
@@ -693,12 +801,12 @@ class Composer:
         if not t or not t.columns:
             return self.r_rows(spec, look, cb, lay)
         cols = t.columns[:5]
-        rows = [r[: len(cols)] + [""] * (len(cols) - len(r[: len(cols)])) for r in t.rows[:7]]
+        rows = [r[: len(cols)] + [""] * (len(cols) - len(r[: len(cols)])) for r in t.rows[:12]]
         ts = self.p.table_style
         # ширины колонок пропорциональны длине содержимого
         lens = [max([len(cols[j])] + [len(r[j]) for r in rows]) for j in range(len(cols))]
-        tot = sum(max(6, min(60, L)) for L in lens)
-        widths = [int(cb.w * max(6, min(60, L)) / tot) for L in lens]
+        tot = sum(max(8, min(60, L)) for L in lens)
+        widths = [int(cb.w * max(8, min(60, L)) / tot) for L in lens]
         widths[-1] = cb.w - sum(widths[:-1])
         pref = look.body_max
         cell_pad = int(0.08 * INCH * look.k)
@@ -720,16 +828,17 @@ class Composer:
             cap = int(0.85 * INCH * look.k)
             extra = (target - sum(heights)) // len(heights)
             heights = [min(cap, h + extra) if h < cap else h for h in heights]
-        header_fill = ts.header_fill or look.accent
+        from ..parsing.tokens import solid_fill
+        header_fill = solid_fill(ts.header_fill) or look.accent      # профили, разобранные до solid_fill, могут хранить «grad:HEX»
         header_text = readable([ts.header_text, self.p.palette.text_light, self.p.palette.text_dark], header_fill)
-        body_fill = ts.body_fill if ts.body_fill and ts.body_fill != "none" else None
+        body_fill = solid_fill(ts.body_fill) if ts.body_fill and ts.body_fill != "none" else None
         body_surface = body_fill or look.bg
         body_text = readable([ts.body_text, look.fg], body_surface)
         lay.elements.append(El(id=self._id("tb"), kind="table", box=Box(x=cb.x, y=cb.y, w=cb.w, h=min(cb.h, sum(heights))),
                                role="table", overflow=overflow,
                                table={"columns": cols, "rows": rows, "widths": widths, "heights": heights, "size": size,
                                       "font": look.body_font, "header_fill": header_fill, "header_text": header_text,
-                                      "body_fill": body_fill, "alt_fill": ts.alt_fill, "body_text": body_text,
+                                      "body_fill": body_fill, "alt_fill": solid_fill(ts.alt_fill), "body_text": body_text,
                                       "border": ts.border or mix(look.bg, look.fg, 0.2), "pad": cell_pad,
                                       "first_col_bold": True}))
 
@@ -773,10 +882,83 @@ class Composer:
             lay.elements.append(self.text(look, Box(x=x + pad, y=body.box.y + pad, w=inner, h=body.box.h - 2 * pad), paras,
                                           "body", look.body_font, bs, bs, bc.text, space_k=0.45, parent=body.id))
 
+    # ---------------------------------------------------------------- code
+    def _mono(self, look: Look) -> str:
+        from ..parsing.fonts import font_available, try_fetch_google_font
+        mono = look.p.mono_font
+        if mono and (font_available(mono) or try_fetch_google_font(mono)):
+            return mono
+        return "Courier New"
+
+    def r_code(self, spec: SlideSpec, look: Look, cb: Box, lay: SlideLayout):
+        """Листинг на тёмной плашке моноширинным шрифтом (как в редакторе кода), справа — пояснения."""
+        s = spec.slide
+        if s.code is None or not s.code.text.strip():
+            return self.r_bullets(spec, look, cb, lay)
+        lines = s.code.text.split("\n")[:18]
+        items = self._items(s, 3)
+        g = look.gap
+        pad = self.pad(look)
+        cw = int(cb.w * 0.6) if items else cb.w
+        cap_h = 0
+        if s.code.caption:
+            cap_h = int(look.caption_size * 12700 * 1.6)
+            lay.elements.append(self.text(look, Box(x=cb.x, y=cb.y, w=cw, h=cap_h), self._paras([s.code.caption]), "caption",
+                                          look.body_font, max(look.min_size, look.caption_size), look.min_size, look.muted))
+            cap_h += int(0.25 * g)
+        box = Box(x=cb.x, y=cb.y + cap_h, w=cw, h=cb.h - cap_h)
+        fill = look.p.palette.bg_dark or mix(look.fg, look.bg, 0.1)
+        ink = readable(["F2F4F7", "FFFFFF", look.bg], fill, 7.0)
+        mono = self._mono(look)
+        inner_w, inner_h = box.w - 2 * pad, box.h - 2 * pad
+        longest = max((len(ln) for ln in lines), default=1) or 1
+        # моноширинный: ширина знака ≈ 0.6 кегля, строка ≈ 1.3 кегля; короткий листинг — крупнее основного текста
+        fit = min(look.body_size * 1.25, inner_w / 12700 / (0.62 * longest), inner_h / 12700 / (1.3 * len(lines)))
+        size = max(look.min_size * 0.9, look.snap_down(fit) if fit >= look.min_size else fit)
+        # плашка — по высоте кода (не меньше половины области), без пустого низа
+        need = int(len(lines) * size * 1.3 * 12700) + 2 * pad
+        box = Box(x=box.x, y=box.y, w=box.w, h=max(min(box.h, need + pad), int(0.5 * cb.h)))
+        inner_h = box.h - 2 * pad
+        lay.elements.append(El(id=self._id("c"), kind="shape", geom="roundRect", box=box, fill=fill, role="code_bg",
+                               radius=int(0.08 * INCH * look.k)))
+        paras = [P(runs=[Run(text=ln if ln.strip() else " ")]) for ln in lines]
+        code_el = El(id=self._id("t"), kind="text", box=Box(x=box.x + pad, y=box.y + pad, w=inner_w, h=inner_h), role="code",
+                     paras=paras, font=mono, size=round(size, 1), color=ink, line_spacing=1.1, parent=None,
+                     overflow=fit < look.min_size * 0.9)
+        lay.elements.append(code_el)
+        if not items:
+            return
+        x = cb.x + cw + g
+        w = cb.x2 - x
+        n = len(items)
+        row_h = (cb.h - (n - 1) * g // 2) // n
+        hs, bs = look.min_size, look.min_size
+        for cand_h, cand_b in look.pairs(heads=[it.head for it in items], bodies=[it.text for it in items], width=w):
+            if all(tf.fits([(it.head, True), (it.text, False)], w, row_h, look.body_font, cand_b) for it in items):
+                hs, bs = cand_h, cand_b
+                break
+        line_col = mix(look.bg, look.fg, 0.18)
+        for i, it in enumerate(items):
+            y = cb.y + i * (row_h + g // 2)
+            hh = tf.needed_height([(it.head or "", True)], w, look.heading_font, hs) if it.head else 0
+            if it.head:
+                lay.elements.append(self.text(look, Box(x=x, y=y, w=w, h=hh), self._paras([it.head]), "heading",
+                                              look.heading_font, hs, look.min_size, look.heading, bold=True))
+            if it.text:
+                lay.elements.append(self.text(look, Box(x=x, y=y + hh + int(0.15 * g), w=w, h=max(1, row_h - hh - int(0.15 * g))),
+                                              self._paras([it.text]), "body", look.body_font, bs, look.min_size, look.muted))
+            if i < n - 1:
+                ly = y + row_h + g // 4
+                lay.elements.append(El(id=self._id("l"), kind="line", box=Box(x=x, y=ly, w=w, h=0), line=line_col,
+                                       line_w=0.75, role="divider"))
+
     # ---------------------------------------------------------------- quote / key message
     def r_quote(self, spec: SlideSpec, look: Look, cb: Box, lay: SlideLayout):
         s = spec.slide
         text = s.quote or s.lead or (s.items[0].text if s.items else "") or s.title
+        support = [it for it in s.items if (it.text or it.head) and (it.text or it.head) != text][:4]
+        if support and sum(len(f"{it.head} {it.text}".split()) for it in support) >= 8:
+            return self._quote_with_points(spec, look, cb, lay, text, support)
         w = int(cb.w * 0.82)
         pref = look.snap_down(min(look.p.typography.title.size * 1.05, 34 * look.k * 1.3))
         el = self.text(look, Box(x=cb.x, y=cb.y, w=w, h=int(cb.h * 0.7)), self._paras([text]), "quote", look.heading_font,
@@ -788,6 +970,36 @@ class Composer:
             lay.elements.append(self.text(look, Box(x=cb.x, y=cb.y + int(cb.h * 0.74), w=w, h=int(cb.h * 0.24)),
                                           self._paras([cap]), "caption", look.body_font, look.body_size, look.min_size,
                                           readable([look.accent, look.heading], look.bg, 4.5, [look.fg]), bold=True))
+
+    def _quote_with_points(self, spec: SlideSpec, look: Look, cb: Box, lay: SlideLayout, text: str, support: list[Item]):
+        g = int(look.gap * 1.5)
+        lw = int(cb.w * 0.55)
+        pw = cb.w - lw - g
+        pad = self.pad(look)
+        pref = look.snap_down(min(look.p.typography.title.size * 1.15, 40 * look.k * 1.3))
+        el = self.text(look, Box(x=cb.x, y=cb.y, w=lw, h=int(cb.h * 0.8)), self._paras([text]), "quote", look.heading_font,
+                       pref, look.body_size, look.heading, bold=False, valign="ctr", line_spacing=1.05)
+        lay.elements.append(el)
+        cc = look.card(accent=True)
+        inner = pw - 2 * pad
+        paras, bs = [], look.body_size
+        for size in look.sizes_between(look.min_size, look.body_max):
+            items = [(f"{it.head}. {it.text}".strip(". ") if it.head and it.text else (it.head or it.text), False) for it in support]
+            if tf.fits(items, inner, int(cb.h * 0.8) - 2 * pad, look.body_font, size, space_after_k=0.6):
+                bs = size
+                break
+        for it in support:
+            runs = [Run(text=it.head + (". " if it.text else ""), bold=True)] if it.head else []
+            runs += [Run(text=it.text)] if it.text else []
+            paras.append(P(runs=runs, bullet=False))
+        need = tf.needed_height([(p.text, False) for p in paras], inner, look.body_font, bs, 1.0, 0.6) + 2 * pad
+        ph = int(min(cb.h * 0.85, max(need, cb.h * 0.5)))
+        py = cb.y + (cb.h - ph) // 2
+        plate = El(id=self._id("c"), kind="card", box=Box(x=cb.x + lw + g, y=py, w=pw, h=ph), card=cc.index, fill=cc.fill,
+                   line=cc.line, geom="roundRect", role="card")
+        lay.elements.append(plate)
+        lay.elements.append(self.text(look, Box(x=plate.box.x + pad, y=py + pad, w=inner, h=ph - 2 * pad), paras, "body",
+                                      look.body_font, bs, look.min_size, cc.text, space_k=0.6, valign="ctr", parent=plate.id))
 
     # ---------------------------------------------------------------- image + text
     def r_image_text(self, spec: SlideSpec, look: Look, cb: Box, lay: SlideLayout):

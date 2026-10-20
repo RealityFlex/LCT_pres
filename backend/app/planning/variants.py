@@ -25,6 +25,7 @@ RECIPES = {
     "comparison": ("comparison",   "comparison",   "table"),
     "quote":      ("quote",        "quote",        "quote"),
     "image":      ("image_text",   "image_text",   "bullets"),
+    "code":       ("code",         "code",         "code"),
     "agenda":     ("agenda",       "agenda",       "agenda"),
 }
 IDX = {"faithful": 0, "visual": 1, "dense": 2}
@@ -311,6 +312,10 @@ def slide_extras(content: DeckContent, spec: SlideSpec) -> dict:
           "meta": " · ".join(x for x in (content.author, content.date) if x) if spec.slide.intent in ("title", "closing") else ""}
     if spec.opts.get("number"):
         ex["number"] = spec.opts["number"]
+    # источник цифр и автор фото — в подвал слайда вместо названия колоды (лицензии CC требуют указать автора)
+    credit = " · ".join(x for x in (spec.slide.source_note, spec.slide.image_credit if spec.slide.image else "") if x)
+    if credit:
+        ex["footer"] = credit
     return ex
 
 

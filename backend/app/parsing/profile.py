@@ -55,10 +55,12 @@ def list_profiles() -> list[TemplateProfile]:
 
 
 def parse_template(src: Path, name: Optional[str] = None, progress: Progress = None, use_llm: bool = True,
-                   force: bool = False) -> TemplateProfile:
+                   force: bool = False, tid: Optional[str] = None, extra: Optional[dict] = None) -> TemplateProfile:
+    """tid — свой идентификатор (стили: вывод python-pptx не стабилен побайтно, хэш файла не годится);
+    extra — поля профиля, которые задаются извне (source, style_id, image_style…)."""
     t0 = time.time()
     say = progress or (lambda m, p: None)
-    tid = file_hash(src)
+    tid = tid or file_hash(src)
     cached = load_profile(tid)
     if cached is not None and not force:
         return cached
@@ -166,6 +168,8 @@ def parse_template(src: Path, name: Optional[str] = None, progress: Progress = N
     if originals:
         profile.style_summary = ("Шаблон из слайдов-картинок: фон, заголовки, карточки и цвета восстановлены по пикселям. "
                                  + (profile.style_summary or "")).strip()[:700]
+    for k, v in (extra or {}).items():
+        setattr(profile, k, v)
     profile.parse_seconds = round(time.time() - t0, 1)
     save_profile(profile)
     say("Готово", 1.0)

@@ -72,6 +72,31 @@ def _small_png(path: Path, width: int = 1024) -> bytes:
     return buf.getvalue()
 
 
+def excerpt(source: str, text: str, limit: int = 3500) -> str:
+    """Источник для проверки фактов слайда: начало брифа + фрагменты материала, где встречаются слова слайда.
+    Первых 3500 знаков длинной методички не хватает — факты из её середины аудитор считал выдуманными."""
+    if len(source) <= limit:
+        return source
+    head = source[:600]
+    words = {w.lower()[:6] for w in re.findall(r"[A-Za-zА-Яа-яЁё0-9]{4,}", text)}
+    chunks, buf = [], ""
+    for line in source[600:].splitlines():
+        buf += line + "\n"
+        if len(buf) > 280:
+            chunks.append(buf)
+            buf = ""
+    if buf:
+        chunks.append(buf)
+    scored = sorted(range(len(chunks)), key=lambda k: -sum(1 for w in words if w in chunks[k].lower()))
+    keep, used = set(), len(head)
+    for k in scored:
+        if used + len(chunks[k]) > limit:
+            continue
+        keep.add(k)
+        used += len(chunks[k])
+    return head + "\n…\n" + "…\n".join(chunks[k] for k in sorted(keep))
+
+
 async def audit_slides(layouts: list[SlideLayout], pngs: list[Path], kinds: list[str], source: str,
                        run: SkillRun, title_max: int = 70, deadline: Optional[float] = None,
                        short_titles: bool = False, no_data: bool = False) -> tuple[list[Issue], dict]:
@@ -82,11 +107,15 @@ async def audit_slides(layouts: list[SlideLayout], pngs: list[Path], kinds: list
     total = len(layouts)
 
     async def one(i: int, lay: SlideLayout, png: Path):
-        if deadline and time.time() > deadline:
+        if deadline and time.time() > deadline - 5:
             return
         try:
-            res = await run.call("slide_auditor", images=[_small_png(png)], kind=kinds[i - 1], index=i, total=total,
-                                 text=slide_text(lay), source=source[:3500], title_max=title_max)
+            res = await asyncio.wait_for(run.call(
+                "slide_auditor", images=[_small_png(png)], kind=kinds[i - 1], index=i, total=total,
+                text=slide_text(lay), source=excerpt(source, slide_text(lay), 3500), title_max=title_max),
+                None if not deadline else deadline - time.time())
+        except asyncio.TimeoutError:
+            return
         except Exception as e:
             log.warning("slide audit %s failed: %s", i, e)
             return

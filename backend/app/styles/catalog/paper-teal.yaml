@@ -1,0 +1,10 @@
+id: paper-teal
+name: Бумага и бирюза
+category: academic
+mood: спокойный, редакционный, учебный
+description: Тёплый бумажный фон, глубокий зелёно-бирюзовый и терракотовый акцент. Курсы, лекции, методички.
+generator: editorial
+palette: {bg: FAF7F2, surface: F3EEE3, primary: 17544C, secondary: 2F7A6E, accent: C05621, text: 23272E,
+          muted: 6E7278, rule: DDD6C9, dark_bg: 17544C, dark_text: F3EEE3}
+fonts: {heading: IBM Plex Sans, body: IBM Plex Sans, mono: IBM Plex Mono}
+chrome: {motif: squares, title_size: 27}

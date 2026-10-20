@@ -7,8 +7,11 @@ import { clock, INTENTS } from "../lib/format";
 import { Badge, LiveDot, Panel, Spinner } from "./ui";
 
 const STAGES = [
+  { key: "brand", label: "Брендбук", sub: "цвета, шрифты и логотип бренда", optional: true },
+  { key: "data", label: "Анализ данных", sub: "природа датасетов, расчёты и диаграммы", optional: true },
+  { key: "research", label: "Поиск фактов", sub: "статьи Википедии по теме", optional: true },
   { key: "plan", label: "Сценарий колоды", sub: "структура, заголовки и тексты по брифу" },
-  { key: "images", label: "Иллюстрации", sub: "генерация картинок для слайдов", optional: true },
+  { key: "images", label: "Иллюстрации", sub: "фото Wikimedia Commons или генерация", optional: true },
   { key: "compose", label: "Вёрстка трёх вариантов", sub: "раскладка по сетке и стилю шаблона" },
   { key: "build", label: "Сборка и рендер", sub: "редактируемый PPTX и превью" },
   { key: "audit", label: "Аудит", sub: "проверка каждого слайда" },
@@ -59,7 +62,9 @@ export function GenerationView({ job, events, budget }: { job: Job; events: JobE
   const elapsed = job.status === "running" || job.status === "queued" ? base.t + (Date.now() - base.at) / 1000 : last?.t ?? 0;
 
   const stageIdx = Math.max(0, STAGES.findIndex((s) => s.key === job.stage));
-  const hadImages = events.some((e) => e.stage === "images");
+  const had = (key: string) => events.some((e) => e.stage === key);
+  const sources = useMemo(() => [...events].reverse().find((e) => e.sources?.length)?.sources ?? [], [events]);
+  const brandWarn = useMemo(() => [...new Set(events.filter((e) => e.stage === "brand").flatMap((e) => e.warnings ?? []))], [events]);
   const story = useMemo(() => [...events].reverse().find((e) => e.slides?.length)?.slides ?? [], [events]);
   const built = new Set(events.filter((e) => e.variant && e.stage === "build").map((e) => e.variant!));
   const audited = new Set(events.filter((e) => e.variant && e.stage === "audit").map((e) => e.variant!));
@@ -71,7 +76,7 @@ export function GenerationView({ job, events, budget }: { job: Job; events: JobE
           <Ring elapsed={elapsed} progress={job.progress} budget={budget} />
           <div className="mt-6 space-y-1">
             {STAGES.map((s, k) => {
-              const skipped = s.optional && !hadImages && stageIdx > k;
+              const skipped = s.optional && !had(s.key) && (stageIdx > k || job.status === "done");
               const done = job.status === "done" || k < stageIdx;
               const active = k === stageIdx && job.status === "running";
               if (skipped) return null;
@@ -139,6 +144,24 @@ export function GenerationView({ job, events, budget }: { job: Job; events: JobE
                   </motion.div>
                 ))}
               </AnimatePresence>
+            </div>
+          )}
+          {brandWarn.length > 0 && (
+            <div className="mt-4 border-t border-line pt-3">
+              <div className="mb-1 text-[12px] font-semibold text-fg-3">Брендбук: на что обратить внимание</div>
+              {brandWarn.map((w) => <div key={w} className="text-[12px] text-orange">⚠ {w}</div>)}
+            </div>
+          )}
+          {sources.length > 0 && (
+            <div className="mt-4 border-t border-line pt-3">
+              <div className="mb-2 text-[12px] font-semibold text-fg-3">Источники фактов</div>
+              <div className="flex flex-wrap gap-1.5">
+                {sources.map((x) => (
+                  <a key={x.url} href={x.url} target="_blank" rel="noreferrer" className="chip max-w-full">
+                    <span className="truncate">{x.title}</span>
+                  </a>
+                ))}
+              </div>
             </div>
           )}
         </Panel>

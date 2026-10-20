@@ -580,6 +580,9 @@ class TemplateAnalyzer:
                 slots.append(Slot(role="pagenum", sid=s.sid, box=_box(s), style=_style_of(s), text=it.text))
             elif s.ph_type == "sldNum":
                 slots.append(Slot(role="pagenum", sid=s.sid, box=_box(s), style=_style_of(s), text=it.text))
+            elif it.sid in sa.chrome and it.has_text and s.name.lower().startswith("footer"):
+                # колонтитул, который шаблон явно пометил именем фигуры (стили Лекала) — подставляем название колоды
+                slots.append(Slot(role="footer", sid=s.sid, box=_box(s), style=_style_of(s), text=it.text))
         if sa.kind in ("title", "section", "closing"):
             rest = [it for it in sa.items if it.sid in sa.content and it.has_text and it.top.kind != "group"
                     and it.sid not in sa.removable]

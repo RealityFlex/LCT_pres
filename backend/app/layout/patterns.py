@@ -40,6 +40,10 @@ def eligible(pat: Canvas, s: ContentSlide, intent: str) -> Optional[float]:
     score = pat.score
     if (pi.hollow or pi.image_sids) and not s.image:
         return None   # в образце фото/скриншот его темы — без своей картинки он останется чужим
+    if s.why or s.then:
+        return None   # у образца нет места под «и что?» — блок вывода ставит рецепт
+    if len(pat.keep_sids) > 50:
+        return None   # десятки фигур образца (кольцо логотипов, схема продукта) — инфографика своей темы, не макет
     if pi.kind in ("cards", "rows", "stats"):
         k = len(items)
         if intent == "comparison":
@@ -57,8 +61,10 @@ def eligible(pat: Canvas, s: ContentSlide, intent: str) -> Optional[float]:
             return None
         avg_body = sum(len(it.text) for it in items) / max(1, k)
         avg_head = sum(len(it.head) for it in items) / max(1, k)
-        if pi.body_chars and avg_body > pi.body_chars * 1.35:
+        if pi.body_chars and avg_body > pi.body_chars * 1.2:
             return None
+        if pi.body_chars and avg_head + avg_body > pi.body_chars + pi.head_chars:
+            return None   # заголовок пункта тоже съедает высоту карточки: вместе не влезут
         if pi.body_chars and avg_body < 0.12 * pi.body_chars:
             score -= 1.2   # слот рассчитан на длинный текст — короткий «потеряется»
         if pi.head_chars and "body" in pi.roles and avg_head > pi.head_chars * 1.6:
@@ -178,11 +184,9 @@ class PatternFiller:
             lay.remove_sids.append(pi.chart_sid)
             b = pi.chart_box
             ch = s.chart
-            lay.elements.append(El(id="pch", kind="chart", box=Box(x=b.x, y=b.y, w=b.w, h=b.h), role="chart", chart={
-                "type": ch.type, "categories": ch.categories, "series": [se.model_dump() for se in ch.series][:5],
-                "unit": ch.unit, "title": ch.title, "colors": look.chart_colors, "font": look.body_font,
-                "font_size": look.snap_down(max(look.min_size, look.body_size * 0.9)), "text_color": look.fg,
-                "grid_color": "D9D9D9" if not look.dark else "4A4A4A", "label_color": look.fg}))
+            from .recipes import chart_payload
+            lay.elements.append(El(id="pch", kind="chart", box=Box(x=b.x, y=b.y, w=b.w, h=b.h), role="chart",
+                                   chart=chart_payload(ch, look)))
         if s.image and pi.image_sids:
             lay.pattern_ops.append({"op": "image", "sid": pi.image_sids[0], "path": s.image})
 

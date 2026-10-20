@@ -20,6 +20,11 @@ scipy==1.17.1
 fonttools==4.62.0
 brotli==1.2.0          # woff2 из Google Fonts
 
+# Данные и брендбуки
+pandas==3.0.1           # датасеты CSV/XLSX/JSON: профиль, расчёты
+openpyxl==3.1.5         # чтение XLSX
+zstandard==0.25.0       # блок данных .fig (Figma) сжат zstd
+
 # Модели
 openai==2.30.0          # OpenAI-совместимый клиент (Yandex Cloud AI Studio: Qwen3.6-35B-A3B, gpt-oss-20b)
 httpx==0.28.1           # GigaChat / Kandinsky, загрузка шрифтов

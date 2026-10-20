@@ -5,7 +5,7 @@ import os
 import shutil
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import yaml
 
@@ -43,9 +43,23 @@ class Settings:
         for d in (self.templates_dir, self.jobs_dir, self.cache_dir):
             d.mkdir(parents=True, exist_ok=True)
 
+        cfg_llm = dict(self.llm)                  # как в config.yaml — до переопределений из окружения
         self.llm_api_key = os.environ.get("LLM_API_KEY", "")
         self.llm_folder = os.environ.get("LLM_FOLDER_ID", "")
         self.llm_base_url = os.environ.get("LLM_BASE_URL", self.llm.get("base_url"))
+        # запасной контур: Yandex AI Studio из config.yaml, если основной (LLM_BASE_URL) — другой эндпоинт (инференс VK)
+        self.backup: Optional[dict] = None
+        ykey, yfolder = os.environ.get("YANDEX_LLM_API_KEY", ""), os.environ.get("YANDEX_FOLDER_ID", "")
+        if ykey and cfg_llm.get("base_url") and self.llm_base_url != cfg_llm.get("base_url"):
+            self.backup = {"api_key": ykey, "folder": yfolder, "base_url": cfg_llm["base_url"],
+                           "max_concurrency": int(cfg_llm.get("backup_concurrency", 4)),
+                           "models": {k: (cfg_llm.get(f"{k}_model") or cfg_llm.get("text_model") or "").format(folder=yfolder)
+                                      for k in ("text", "vision", "fallback")}}
+        self.llm_project_id = os.environ.get("LLM_PROJECT_ID", "")     # заголовок Project-ID (Inference API)
+        for kind in ("text", "vision", "fallback"):
+            v = os.environ.get(f"LLM_{kind.upper()}_MODEL")
+            if v is not None:
+                self.llm[f"{kind}_model"] = v or None
         self.gigachat_key = os.environ.get("GIGACHAT_AUTH_KEY", "")
         self.gigachat_scope = os.environ.get("GIGACHAT_SCOPE", "GIGACHAT_API_PERS")
 

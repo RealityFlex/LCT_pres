@@ -24,6 +24,18 @@ import { GenerationView } from "../components/Generation";
 import { Filmstrip, PresentMode, SlideViewer } from "../components/Viewer";
 import { Badge, Button, Empty, Modal, ModalHeader, Panel, Spinner, useToast } from "../components/ui";
 import { api, downloadUrl, url, type Job, type JobEvent, type VariantData } from "../lib/api";
+import { OutlineEditor } from "../components/OutlineEditor";
+import { VizPanel } from "../components/VizPanel";
+
+/** «Сделать так же»: новый проект в стиле текущего — встроенный стиль (со своими цветами) или шаблон компании. */
+function sameStyleLink(job: Job): string {
+  const b = job.brief;
+  if (b.style_id) {
+    const c = b.style_colors ? `&colors=${encodeURIComponent(JSON.stringify(b.style_colors))}` : "";
+    return `/new?style=${encodeURIComponent(b.style_id)}${c}`;
+  }
+  return `/new?template=${encodeURIComponent(job.template_id)}`;
+}
 import { downloadFile, haptic, shareLink } from "../lib/bridge";
 import { slidesWord } from "../lib/format";
 
@@ -32,7 +44,7 @@ function useJobStream(id: string) {
   const job = useQuery({
     queryKey: ["job", id],
     queryFn: () => api.job(id),
-    refetchInterval: (q) => (q.state.data && (q.state.data.status === "done" || q.state.data.status === "error") ? false : 2500),
+    refetchInterval: (q) => (q.state.data && ["done", "error", "outline"].includes(q.state.data.status) ? false : 2500),
   });
   const [events, setEvents] = useState<JobEvent[]>([]);
   useEffect(() => {
@@ -83,6 +95,10 @@ export default function Project() {
         {j.status === "done" ? (
           <motion.div key="res" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
             <ResultView job={j} />
+          </motion.div>
+        ) : j.status === "outline" ? (
+          <motion.div key="outline" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+            <OutlineEditor job={j} />
           </motion.div>
         ) : j.status === "error" ? (
           <motion.div key="err" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -173,6 +189,20 @@ function ResultView({ job }: { job: Job }) {
     onError: (e: Error) => toast({ tone: "bad", title: "Не удалось исправить", text: e.message }),
   });
 
+  const [pendingViz, setPendingViz] = useState<string | null>(null);
+  const viz = useMutation({
+    mutationFn: (type: string) => { setPendingViz(type); return api.chart(job.id, vid, idx, type); },
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["variant", job.id, vid] });
+      qc.invalidateQueries({ queryKey: ["job", job.id] });
+      haptic("medium");
+      toast({ tone: "ok", title: `Слайд ${r.changed[0]}: ${r.label}`, text: `ревизия ${r.revision}, аудит слайда повторён` });
+    },
+    onError: (e: Error) => toast({ tone: "bad", title: "Не удалось перестроить", text: e.message }),
+    onSettled: () => setPendingViz(null),
+  });
+  const slideData = slides[idx - 1]?.data;
+
   const del = useMutation({
     mutationFn: () => api.deleteJob(job.id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["jobs"] }); nav("/projects"); },
@@ -206,8 +236,9 @@ function ResultView({ job }: { job: Job }) {
                   <div className="line-clamp-2 text-[12px] leading-snug text-fg-3">{slidesWord(x.n_slides)} · {x.description.split(",")[0]}</div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
-                  {(x.audit.error ?? 0) > 0 ? <Badge tone="bad" dot>{x.audit.error}</Badge> : <Badge tone="ok" dot>0</Badge>}
-                  {(x.audit.warning ?? 0) > 0 && <Badge tone="warn" dot>{x.audit.warning}</Badge>}
+                  {(x.audit.error ?? 0) + (x.audit.warning ?? 0) === 0 && <Badge tone="ok" dot>0</Badge>}
+                  {(x.audit.error ?? 0) > 0 && <Badge tone="warn" dot>{x.audit.error}</Badge>}
+                  {(x.audit.warning ?? 0) > 0 && <Badge tone="accent" dot>{x.audit.warning}</Badge>}
                 </div>
               </button>
             );
@@ -230,6 +261,7 @@ function ResultView({ job }: { job: Job }) {
                     className="glass-strong absolute right-0 top-12 z-50 w-72 overflow-hidden rounded-2xl p-1.5">
                     {[
                       { icon: <Icon24PaletteOutline width={20} height={20} />, label: "Тот же контент на другом шаблоне", run: () => setOther(true) },
+                      { icon: <Icon24PaletteOutline width={20} height={20} />, label: "Новая презентация в этом стиле", run: () => nav(sameStyleLink(job)) },
                       { icon: <Icon24RefreshOutline width={20} height={20} />, label: "Сгенерировать заново", run: () => rerun.mutate({ reuse: false }) },
                       { icon: <Icon24ShareOutline width={20} height={20} />, label: "Поделиться ссылкой", run: async () => { const ok = await shareLink(`#/project/${job.id}`); toast({ tone: ok ? "ok" : "bad", title: ok ? "Ссылка готова" : "Не удалось поделиться" }); } },
                       { icon: <Icon24DeleteOutline width={20} height={20} />, label: "Удалить проект", danger: true, run: () => del.mutate() },
@@ -259,7 +291,10 @@ function ResultView({ job }: { job: Job }) {
           <div className="min-w-0">
             <SlideViewer slides={slides} index={idx} onIndex={setIdx} issues={issues} showIssues={showIssues}
               onToggleIssues={() => setShowIssues((s) => !s)} hoverIssue={hover} slideW={v.slide_w} slideH={v.slide_h}
-              busy={fix.isPending} onPresent={() => setPresent(true)} />
+              busy={fix.isPending || viz.isPending} onPresent={() => setPresent(true)} />
+            {slideData && slideData.options.length > 1 && (
+              <VizPanel className="mt-4" data={slideData} busy={viz.isPending} pending={pendingViz} onPick={(t) => viz.mutate(t)} />
+            )}
             <div className="mt-4 xl:hidden">
               <Filmstrip slides={slides} index={idx} onIndex={setIdx} issues={issues} rev={cur?.revision} />
             </div>

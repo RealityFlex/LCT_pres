@@ -95,8 +95,9 @@ export function ProjectCard({ j }: { j: JobCard }) {
         </div>
         {j.status === "done" && (
           <div className="mt-3 flex gap-1.5">
-            {errs > 0 ? <Badge tone="bad" dot>{errs} ошиб.</Badge> : <Badge tone="ok" dot>без ошибок</Badge>}
-            {warns > 0 && <Badge tone="warn" dot>{warns} замеч.</Badge>}
+            {errs + warns === 0 && <Badge tone="ok" dot>без замечаний</Badge>}
+            {errs > 0 && <Badge tone="warn" dot>{errs} предупр.</Badge>}
+            {warns > 0 && <Badge tone="accent" dot>{warns} замеч.</Badge>}
           </div>
         )}
         {running && <ProgressBar value={j.progress} className="mt-3" />}
@@ -107,8 +108,46 @@ export function ProjectCard({ j }: { j: JobCard }) {
 
 const PARSE_STAGES = ["Шрифты шаблона", "Структура слайдов", "Рендер шаблона", "Дизайн-токены", "Холсты", "Анализ стиля", "Готово"];
 
-export function Dropzone({ onReady, compact }: { onReady: (id: string) => void; compact?: boolean }) {
+/** Один шаблон из пакетной загрузки: свой разбор и свой прогресс. */
+function BatchRow({ file, onDone }: { file: File; onDone: (id: string | null) => void }) {
+  const [tid, setTid] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
+  const up = useMutation({
+    mutationFn: () => api.uploadTemplate(file),
+    onSuccess: (r) => (r.status === "ready" ? (setOk(true), onDone(r.id)) : setTid(r.id)),
+    onError: (e: Error) => (setErr(e.message), onDone(null)),
+  });
+  useEffect(() => { up.mutate(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const st = useQuery({
+    queryKey: ["parse", tid],
+    queryFn: () => api.templateStatus(tid!),
+    enabled: !!tid && !ok && !err,
+    refetchInterval: 900,
+  });
+  useEffect(() => {
+    if (st.data?.status === "ready" && !ok) { setOk(true); onDone(tid); }
+    if (st.data?.status === "error" && !err) { setErr(st.data.message); onDone(null); }
+  }, [st.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const msg = err ?? (ok ? "Готово" : up.isPending ? "Загружаю…" : st.data?.message ?? "Разбираю шаблон…");
+  return (
+    <div data-testid="batch-row" className="text-left">
+      <div className="flex items-center gap-2 text-[13px]">
+        {ok ? <Icon20CheckCircleOn width={15} height={15} className="text-ok" /> : err ? null : <Spinner size={13} />}
+        <span className="min-w-0 flex-1 truncate font-semibold">{file.name}</span>
+        <span className={clsx("shrink-0 text-[12px]", err ? "text-bad" : ok ? "text-ok" : "text-fg-3")}>{msg}</span>
+      </div>
+      <ProgressBar value={ok ? 1 : up.isPending ? 0.04 : st.data?.progress ?? 0.05} className="mt-1.5" />
+    </div>
+  );
+}
+
+export function Dropzone({ onReady, compact, multiple, onBatch }: {
+  onReady: (id: string) => void; compact?: boolean; multiple?: boolean; onBatch?: (ids: string[]) => void;
+}) {
   const qc = useQueryClient();
+  const [batch, setBatch] = useState<File[] | null>(null);
+  const done = useRef<(string | null)[]>([]);
   const input = useRef<HTMLInputElement | null>(null);
   const [drag, setDrag] = useState(false);
   const [tid, setTid] = useState<string | null>(null);
@@ -143,6 +182,28 @@ export function Dropzone({ onReady, compact }: { onReady: (id: string) => void; 
     }
   }, [st.data, tid, qc, onReady]);
 
+  const pickMany = (fl?: FileList | null) => {
+    const fs = [...(fl ?? [])];
+    if (multiple && fs.length > 1) {
+      const ok = fs.filter((f) => /\.(pptx|potx)$/i.test(f.name));
+      if (!ok.length) return setErr("Нужны файлы PowerPoint (.pptx или .potx)");
+      setErr(null);
+      done.current = [];
+      setBatch(ok);
+      return;
+    }
+    pick(fs[0]);
+  };
+  const rowDone = (id: string | null) => {
+    done.current.push(id);
+    qc.invalidateQueries({ queryKey: ["templates"] });
+    if (batch && done.current.length === batch.length) {
+      const ids = done.current.filter((x): x is string => !!x);
+      setTimeout(() => setBatch(null), 1200);
+      onBatch?.(ids);
+    }
+  };
+
   const pick = (f?: File | null) => {
     if (!f) return;
     if (!/\.(pptx|potx)$/i.test(f.name)) {
@@ -154,14 +215,14 @@ export function Dropzone({ onReady, compact }: { onReady: (id: string) => void; 
     up.mutate(f);
   };
 
-  const busy = up.isPending || !!tid;
+  const busy = up.isPending || !!tid || !!batch;
   const stageIdx = st.data ? Math.max(0, PARSE_STAGES.indexOf(st.data.message)) : 0;
 
   return (
     <div
       onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
       onDragLeave={() => setDrag(false)}
-      onDrop={(e) => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files?.[0]); }}
+      onDrop={(e) => { e.preventDefault(); setDrag(false); pickMany(e.dataTransfer.files); }}
       onClick={() => !busy && input.current?.click()}
       role="button"
       tabIndex={0}
@@ -173,8 +234,17 @@ export function Dropzone({ onReady, compact }: { onReady: (id: string) => void; 
         busy && "cursor-progress",
       )}
     >
-      <input ref={input} type="file" accept=".pptx,.potx" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
-      {busy ? (
+      <input ref={input} data-testid="template-input" type="file" accept=".pptx,.potx" multiple={multiple} className="hidden"
+        onChange={(e) => { pickMany(e.target.files); e.target.value = ""; }} />
+      {batch ? (
+        <div className="w-full max-w-md space-y-3.5">
+          <div className="mx-auto mb-1 grid size-12 place-items-center rounded-2xl bg-[color-mix(in_srgb,var(--brand)_14%,transparent)] text-brand">
+            <Spinner size={22} />
+          </div>
+          <div className="text-[14px] font-semibold">Разбираю {batch.length} шаблона параллельно</div>
+          {batch.map((f) => <BatchRow key={f.name} file={f} onDone={rowDone} />)}
+        </div>
+      ) : busy ? (
         <div className="w-full max-w-xs">
           <div className="mx-auto mb-4 grid size-14 place-items-center rounded-2xl bg-[color-mix(in_srgb,var(--brand)_14%,transparent)] text-brand">
             <Spinner size={26} />
@@ -199,8 +269,8 @@ export function Dropzone({ onReady, compact }: { onReady: (id: string) => void; 
           >
             <Icon24UploadOutline width={28} height={28} />
           </motion.div>
-          <div className="text-[15px] font-semibold">Перетащите шаблон .pptx</div>
-          <div className="mt-1 text-[13px] text-fg-3">или нажмите, чтобы выбрать файл</div>
+          <div className="text-[15px] font-semibold">{multiple ? "Перетащите шаблоны .pptx" : "Перетащите шаблон .pptx"}</div>
+          <div className="mt-1 text-[13px] text-fg-3">{multiple ? "можно сразу несколько — или нажмите, чтобы выбрать" : "или нажмите, чтобы выбрать файл"}</div>
           <div className="mt-3 text-[12px] text-fg-4">Разбор занимает 10–90 с и выполняется один раз</div>
           {err && <div className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--red)_12%,transparent)] px-3 py-1.5 text-[12px] text-bad">{err}</div>}
         </>

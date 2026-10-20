@@ -103,7 +103,7 @@ class Typography(BaseModel):
 
 
 class Slot(BaseModel):
-    role: str            # title | subtitle | kicker | body | meta | pagenum | number | photo
+    role: str            # title | subtitle | kicker | body | meta | pagenum | number | photo | footer
     sid: str
     box: Box
     style: TextStyle
@@ -216,6 +216,9 @@ class TemplateProfile(BaseModel):
     style_summary: str = ""
     parse_seconds: float = 0.0
     version: int = 1
+    source: str = "upload"                # upload — корпоративный шаблон; style — встроенный стиль Лекала
+    style_id: Optional[str] = None
+    mono_font: Optional[str] = None       # моноширинный шрифт стиля (блоки кода)
 
     def canvas(self, cid: str) -> Canvas:
         for c in self.canvases:

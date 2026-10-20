@@ -1,0 +1,10 @@
+id: academic-serif
+name: Академический
+category: academic
+mood: научный, основательный, спокойный
+description: Светлый фон, чернильно-синий цвет и кирпичный акцент, заголовки с засечками. Защиты, доклады, научные отчёты.
+generator: academic
+palette: {bg: FDFCF8, surface: F3F1EA, primary: 2B3A67, secondary: 6B7A99, accent: B5502B, text: 22263A,
+          muted: 646A7E, rule: DFDCD2, dark_bg: 233057, dark_text: F5F2EA}
+fonts: {heading: Lora, body: PT Sans, mono: IBM Plex Mono}
+chrome: {motif: frame, title_size: 27, cover: light, card_fill: false}

@@ -43,7 +43,7 @@ export default function Home() {
           <motion.h1 {...fade} transition={{ duration: 0.6, delay: 0.05 }}
             className="font-display text-[38px] font-semibold leading-[1.04] tracking-[-0.025em] text-balance sm:text-[50px] xl:text-[58px]">
             Презентации в&nbsp;фирменном стиле{" "}
-            <span className="gradient-text">за&nbsp;30&nbsp;секунд</span>
+            <span className="gradient-text">от&nbsp;30&nbsp;секунд</span>
           </motion.h1>
           <motion.p {...fade} transition={{ duration: 0.6, delay: 0.12 }}
             className="mt-6 max-w-xl text-[17px] leading-relaxed text-fg-2 text-pretty sm:text-lg">
